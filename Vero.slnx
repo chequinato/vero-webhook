@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/simulator/">
+    <Project Path="simulator/Vero.Simulator/Vero.Simulator.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Vero.Api/Vero.Api.csproj" />
+    <Project Path="src/Vero.Application/Vero.Application.csproj" />
+    <Project Path="src/Vero.Domain/Vero.Domain.csproj" />
+    <Project Path="src/Vero.Infrastructure/Vero.Infrastructure.csproj" />
+    <Project Path="src/Vero.Worker/Vero.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Vero.Tests/Vero.Tests.csproj" />
+  </Folder>
+</Solution>
