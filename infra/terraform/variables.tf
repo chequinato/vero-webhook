@@ -22,3 +22,10 @@ variable "db_password" {
   type        = string
   sensitive   = true
 }
+
+variable "db_connection_string" {
+  description = "Connection string do PostgreSQL para a Lambda"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
