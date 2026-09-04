@@ -14,13 +14,14 @@ a transação é confiável, suspeita ou deve ser bloqueada imediatamente.
 
 | Camada | Tecnologia |
 |--------|------------|
-| Linguagem | C# (.NET) |
+| Linguagem | C# (.NET 10) |
 | Framework | ASP.NET Core |
 | Banco de dados | PostgreSQL |
 | ORM | Entity Framework Core |
 | Fila | AWS SQS (ou simulação em memória) |
 | Alertas | AWS SNS (ou console log local) |
-| Testes | xUnit |
+| Worker | AWS Lambda (ou BackgroundService local) |
+| Testes | xUnit + Moq |
 | Infra | Terraform |
 
 ## Estrutura do projeto
@@ -52,8 +53,8 @@ Vero/
 
 1. Clone o repositório:
    ```bash
-   git clone https://github.com/chequinato/vero-c-.git
-   cd vero-c-
+   git clone https://github.com/chequinato/vero-webhook.git
+   cd vero-webhook
    ```
 
 2. Configure a connection string (copie `.env.example` para `.env` e ajuste):
@@ -107,9 +108,75 @@ Vero/
 dotnet test
 ```
 
-32 testes cobrindo:
-- Regras síncronas (ValorAlto, ScoreBaixo)
-- Regras assíncronas (HorarioEstranho, ValorRedondo)
-- Criptografia AES (encrypt/decrypt, IV aleatório, chaves diferentes, edge cases)
-- HMAC (determinismo, payloads diferentes, chaves diferentes)
-- Rate limiting (sliding window, expiração)
+**76 testes** cobrindo:
+
+### Domain (24 testes)
+- Regras síncronas: ValorAlto (3), ScoreBaixo com mock (5)
+- Regras assíncronas: HorarioEstranho (6), ValorRedondo (6), Velocity com mock (4)
+
+### Application (19 testes)
+- TransacaoService: fluxo normal, bloqueio, replay, múltiplas regras, consulta, listagem (11)
+- AnomalyDetectionService: aprovação, suspeita+alerta, não encontrada, status inválido (8)
+
+### API (8 testes)
+- TransactionsController: POST 202/403/409/400, GET por id, GET 404, GET suspeitas, GET sem flag
+
+### Security (15 testes)
+- AES-256-CBC: encrypt/decrypt, IV aleatório, chave errada, edge cases (8)
+- HMAC-SHA256: determinismo, payloads diferentes, chaves diferentes (4)
+- Rate limiting: sliding window, expiração (3)
+
+### Infrastructure (7 testes)
+- TransacaoRepository: adicionar, histórico, exists, update status, listar suspeitas, contagem por período
+
+## Infraestrutura AWS (Terraform)
+
+Todos os serviços ficam dentro do **Always Free Tier** da AWS:
+
+| Recurso | Serviço | Free Tier |
+|---------|---------|-----------|
+| Fila de análise | SQS | 1M requisições/mês |
+| Dead Letter Queue | SQS | incluído |
+| Alertas | SNS | 1K notificações email/mês |
+| Worker | Lambda | 1M invocações + 400K GB-s/mês |
+| Banco de dados | RDS PostgreSQL | ⚠️ **NÃO aplicar** — custa fora do Free Tier |
+
+### Deploy da infraestrutura
+
+```bash
+cd infra/terraform
+terraform init
+terraform plan    # verificar sempre antes de aplicar
+terraform apply   # aplica SQS + SNS + Lambda (NÃO aplica RDS)
+```
+
+> ⚠️ O `rds.tf` existe apenas como referência. **Nunca** execute `terraform apply` nele
+> sem verificar custos. Está marcado com tag `NAO-APLICAR-SEM-FREE-TIER`.
+
+## Arquitetura
+
+```
+Client → [POST /transactions] → HMAC + Rate Limit → Controller
+                                                         │
+                              ┌─────────────────────────┤
+                              │ Sync Rules              │
+                              │ (valor alto, score)     │
+                              │                         │
+                        Bloqueada?                Aceita provisória
+                         → 403                         │
+                                                       ▼
+                                              Persiste no DB (EF Core)
+                                                       │
+                                                       ▼
+                                              Enfileira no SQS
+                                                       │
+                                                       ▼
+                                              Lambda / Worker
+                                                       │
+                                              Async Rules
+                                              (velocity, horário, valor redondo)
+                                                       │
+                                          ┌────────────┴────────────┐
+                                     Suspeita                   Aprovada
+                                    → SNS alert               → status update
+```
