@@ -90,3 +90,26 @@ Vero/
 - Velocity: múltiplas transações do mesmo remetente em 5 minutos
 - Horário estranho: transações entre 1h e 5h
 - Valor redondo: múltiplos de R$1.000 acima de R$1.000
+
+## Segurança
+
+| Camada | Descrição |
+|--------|-----------|
+| **HMAC** | Toda requisição POST ao webhook precisa do header `X-Signature` com a assinatura HMAC-SHA256 do body. Comparação em tempo constante (protege contra timing attacks). |
+| **Rate Limiting** | Sliding window por IP — padrão: 60 requisições por minuto. Configurável via `appsettings.json`. |
+| **Replay Protection** | O `id` da transação é único; transações reenviadas recebem `409 Conflict`. |
+| **Criptografia em repouso** | Dados sensíveis (`NumeroConta`, `Titular`) são criptografados com AES-256-CBC no banco via EF Core Value Converter. |
+| **Segredos fora do código** | Todas as chaves e credenciais vêm de variáveis de ambiente ou `appsettings`, nunca hardcoded. |
+
+## Testes
+
+```bash
+dotnet test
+```
+
+32 testes cobrindo:
+- Regras síncronas (ValorAlto, ScoreBaixo)
+- Regras assíncronas (HorarioEstranho, ValorRedondo)
+- Criptografia AES (encrypt/decrypt, IV aleatório, chaves diferentes, edge cases)
+- HMAC (determinismo, payloads diferentes, chaves diferentes)
+- Rate limiting (sliding window, expiração)
