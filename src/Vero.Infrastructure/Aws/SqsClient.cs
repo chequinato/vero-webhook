@@ -1,3 +1,5 @@
+using Amazon.SQS;
+using Amazon.SQS.Model;
 using Microsoft.Extensions.Logging;
 using Vero.Domain.Interfaces;
 
@@ -5,35 +7,59 @@ namespace Vero.Infrastructure.Aws;
 
 /// <summary>
 /// Implementação da fila de transações usando AWS SQS.
-/// Para uso em produção — substitui o InMemoryFilaTransacao.
-///
-/// TODO: Implementar quando configurar credenciais AWS e SQS queue real.
+/// Substitui o InMemoryFilaTransacao em produção.
 /// </summary>
 public class SqsFilaTransacao : IFilaTransacao
 {
+    private readonly IAmazonSQS _sqsClient;
     private readonly ILogger<SqsFilaTransacao> _logger;
     private readonly string _queueUrl;
 
-    public SqsFilaTransacao(ILogger<SqsFilaTransacao> logger, string queueUrl)
+    public SqsFilaTransacao(IAmazonSQS sqsClient, ILogger<SqsFilaTransacao> logger, string queueUrl)
     {
+        _sqsClient = sqsClient;
         _logger = logger;
         _queueUrl = queueUrl;
     }
 
-    public Task EnviarParaAnaliseAsync(string transacaoId)
+    public async Task EnviarParaAnaliseAsync(string transacaoId)
     {
-        // TODO: Implementar com Amazon.SQS SDK
-        // var request = new SendMessageRequest { QueueUrl = _queueUrl, MessageBody = transacaoId };
-        // await _sqsClient.SendMessageAsync(request);
-        _logger.LogInformation("SQS: Enviaria transação {TransacaoId} para fila {QueueUrl}", transacaoId, _queueUrl);
-        return Task.CompletedTask;
+        var request = new SendMessageRequest
+        {
+            QueueUrl = _queueUrl,
+            MessageBody = transacaoId
+        };
+
+        var response = await _sqsClient.SendMessageAsync(request);
+
+        _logger.LogInformation(
+            "SQS: Transação {TransacaoId} enviada para fila. MessageId: {MessageId}",
+            transacaoId, response.MessageId);
     }
 
-    public Task<string?> ConsumirProximaAsync()
+    public async Task<string?> ConsumirProximaAsync()
     {
-        // TODO: Implementar com Amazon.SQS SDK
-        // var response = await _sqsClient.ReceiveMessageAsync(new ReceiveMessageRequest { QueueUrl = _queueUrl, MaxNumberOfMessages = 1 });
-        _logger.LogInformation("SQS: Consumiria próxima mensagem da fila {QueueUrl}", _queueUrl);
-        return Task.FromResult<string?>(null);
+        var request = new ReceiveMessageRequest
+        {
+            QueueUrl = _queueUrl,
+            MaxNumberOfMessages = 1,
+            WaitTimeSeconds = 20 // Long polling
+        };
+
+        var response = await _sqsClient.ReceiveMessageAsync(request);
+
+        if (response.Messages.Count == 0)
+            return null;
+
+        var message = response.Messages[0];
+
+        // Deleta a mensagem após consumir (ack)
+        await _sqsClient.DeleteMessageAsync(_queueUrl, message.ReceiptHandle);
+
+        _logger.LogInformation(
+            "SQS: Mensagem consumida da fila. TransacaoId: {TransacaoId}",
+            message.Body);
+
+        return message.Body;
     }
 }
