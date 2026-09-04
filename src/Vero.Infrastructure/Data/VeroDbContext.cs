@@ -1,11 +1,20 @@
 using Microsoft.EntityFrameworkCore;
 using Vero.Domain.Entities;
+using Vero.Domain.Interfaces;
 
 namespace Vero.Infrastructure.Data;
 
 public class VeroDbContext : DbContext
 {
+    private readonly ICryptoService? _cryptoService;
+
     public VeroDbContext(DbContextOptions<VeroDbContext> options) : base(options) { }
+
+    public VeroDbContext(DbContextOptions<VeroDbContext> options, ICryptoService cryptoService)
+        : base(options)
+    {
+        _cryptoService = cryptoService;
+    }
 
     public DbSet<Conta> Contas => Set<Conta>();
     public DbSet<Transacao> Transacoes => Set<Transacao>();
@@ -15,14 +24,26 @@ public class VeroDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
+        // Converter para criptografia em repouso (dados sensíveis)
+        var encryptedConverter = _cryptoService is not null
+            ? new EncryptedStringConverter(_cryptoService)
+            : null;
+
         // Conta
         modelBuilder.Entity<Conta>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.NumeroConta).IsRequired().HasMaxLength(50);
-            entity.Property(e => e.Titular).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.NumeroConta).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.Titular).IsRequired().HasMaxLength(500);
             entity.Property(e => e.Score).IsRequired();
             entity.HasIndex(e => e.NumeroConta).IsUnique();
+
+            // Criptografa NumeroConta e Titular em repouso
+            if (encryptedConverter is not null)
+            {
+                entity.Property(e => e.NumeroConta).HasConversion(encryptedConverter);
+                entity.Property(e => e.Titular).HasConversion(encryptedConverter);
+            }
         });
 
         // Transacao

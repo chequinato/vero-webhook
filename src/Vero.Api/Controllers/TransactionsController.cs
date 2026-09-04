@@ -29,6 +29,18 @@ public class TransactionsController : ControllerBase
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
+        // Proteção contra replay: verifica se a transação já foi processada
+        var existente = await _transacaoService.ConsultarStatusAsync(request.Id);
+        if (existente is not null)
+        {
+            return Conflict(new TransacaoResponseDto
+            {
+                Status = existente.Status.ToString().ToLowerInvariant(),
+                Motivo = "transacao_duplicada",
+                Id = existente.Id
+            });
+        }
+
         // Resolver contas pelo NumeroConta
         var remetente = await _contaRepository.ObterPorNumeroContaAsync(request.Remetente);
         var destinatario = await _contaRepository.ObterPorNumeroContaAsync(request.Destinatario);
