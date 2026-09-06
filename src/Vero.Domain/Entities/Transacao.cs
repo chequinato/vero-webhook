@@ -39,5 +39,11 @@ public class Transacao
     /// </summary>
     public string? Motivo { get; set; }
 
+    /// <summary>
+    /// Score de risco calculado pelo modelo de ML (0.0 a 1.0).
+    /// Nulo se ainda não foi avaliado pelo modelo.
+    /// </summary>
+    public float? RiskScore { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

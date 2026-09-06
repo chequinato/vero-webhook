@@ -4,6 +4,7 @@
     <ProjectReference Include="..\Vero.Application\Vero.Application.csproj" />
     <ProjectReference Include="..\Vero.Infrastructure\Vero.Infrastructure.csproj" />
     <ProjectReference Include="..\Vero.Domain\Vero.Domain.csproj" />
+    <ProjectReference Include="..\Vero.ML\Vero.ML.csproj" />
   </ItemGroup>
 
   <ItemGroup>

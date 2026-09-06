@@ -7,6 +7,7 @@
     <Project Path="src/Vero.Application/Vero.Application.csproj" />
     <Project Path="src/Vero.Domain/Vero.Domain.csproj" />
     <Project Path="src/Vero.Infrastructure/Vero.Infrastructure.csproj" />
+    <Project Path="src/Vero.ML/Vero.ML.csproj" />
     <Project Path="src/Vero.Worker/Vero.Worker.csproj" />
   </Folder>
   <Folder Name="/tests/">

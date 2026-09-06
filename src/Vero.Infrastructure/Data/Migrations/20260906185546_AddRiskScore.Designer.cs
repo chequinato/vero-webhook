@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Vero.Infrastructure.Data;
@@ -11,9 +12,11 @@ using Vero.Infrastructure.Data;
 namespace Vero.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(VeroDbContext))]
-    partial class VeroDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260906185546_AddRiskScore")]
+    partial class AddRiskScore
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -58,33 +61,33 @@ namespace Vero.Infrastructure.Data.Migrations
                         {
                             Id = 1,
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            NumeroConta = "2TTZ5SJPpMs8RPfGo3aWUU+vYIllRo+TUDS9sBJv5sk=",
+                            NumeroConta = "qkg/kfeaBU1RmKwcptlgUFb1Vc9GHr9vOVlgoMyooEQ=",
                             Score = 85,
-                            Titular = "6JESD97Lb0dq6zQPe2zKC8rs8cq4Lx7c0cf8Dlhha9g="
+                            Titular = "yXwMlyeCQVaiapFjLjdADrESbyEDWaYPTj4f3TII6J4="
                         },
                         new
                         {
                             Id = 2,
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            NumeroConta = "0rD2NYwW2X/Gps58UceNhhCpa8kHvO2276ruT/bOUxE=",
+                            NumeroConta = "IykADW5Frk7TJnrqvo6wy6CKUOdcdMKhHDr49l9TkkQ=",
                             Score = 72,
-                            Titular = "EpuQRff7G2eZ9NHpahR4spp+chyEDLWiUqqj9ja8SR0="
+                            Titular = "Vt5cvL+jRiqXxqQLMLjbpkNHkcrSCJUHDn4fe4fmRng="
                         },
                         new
                         {
                             Id = 3,
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            NumeroConta = "nUUIRi6+yaRK2KPdD5Hm72e/JGSHMVN8q5gi/e24Kdw=",
+                            NumeroConta = "sKj+7IRZRAkYlZXOVAsCV8lI213s656quN+NLx2IbfM=",
                             Score = 25,
-                            Titular = "c6NVax4PcqHNHcl+Ohrd0+FyMtuEKODWIG8XSZ0U9Mk="
+                            Titular = "c2bfuBp5Z7S02pi7u+/F4UBV5N4QLbUyobrhekP1Xvg="
                         },
                         new
                         {
                             Id = 4,
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            NumeroConta = "Erdf3QglevxAIi1yTiXTNm7gF3JX8vC/LxsCWIjGPRg=",
+                            NumeroConta = "gH24lMd44cMOJ0CMTDOjdcBj1TZUR+75FVRb1uyQ0Wc=",
                             Score = 50,
-                            Titular = "YdGE2uLU7ltHGH57wKwe8D/WLRobhNGoNfwOLPm3pxY="
+                            Titular = "JqHQKqe4paSnwnLOYi5dVRMHVpwL7+wToE+DSoE08Ho="
                         });
                 });
 
