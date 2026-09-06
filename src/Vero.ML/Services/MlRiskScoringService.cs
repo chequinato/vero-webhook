@@ -15,11 +15,16 @@ namespace Vero.ML.Services;
 ///
 /// Se o modelo não existir no path configurado, treina automaticamente
 /// com dados sintéticos na inicialização.
+///
+/// Thread-safety: PredictionEngine não é thread-safe, então usamos lock
+/// para serializar as predições. O custo é negligível — cada predição
+/// leva microsegundos.
 /// </summary>
 public class MlRiskScoringService : IRiskScoringService, IDisposable
 {
     private readonly PredictionEngine<TransacaoFeatures, TransacaoPrediction> _predictionEngine;
     private readonly ILogger<MlRiskScoringService> _logger;
+    private readonly object _predictionLock = new();
 
     public MlRiskScoringService(string modelPath, ILogger<MlRiskScoringService> logger)
     {
@@ -48,10 +53,15 @@ public class MlRiskScoringService : IRiskScoringService, IDisposable
     /// Calcula o risco de fraude extraindo features da transação e
     /// passando pelo modelo treinado.
     /// </summary>
-    public Task<float> CalcularRiscoAsync(Transacao transacao, Conta? remetente)
+    public Task<float> CalcularRiscoAsync(Transacao transacao, Conta? remetente, int transacoesRecentes = 0)
     {
-        var features = ExtrairFeatures(transacao, remetente);
-        var prediction = _predictionEngine.Predict(features);
+        var features = ExtrairFeatures(transacao, remetente, transacoesRecentes);
+
+        TransacaoPrediction prediction;
+        lock (_predictionLock)
+        {
+            prediction = _predictionEngine.Predict(features);
+        }
 
         _logger.LogDebug(
             "ML Score para transação {Id}: Probability={Prob:F4}, PredictedFraud={IsFraud}",
@@ -64,7 +74,7 @@ public class MlRiskScoringService : IRiskScoringService, IDisposable
     /// Extrai as features de uma transação para alimentar o modelo.
     /// Mesmas features usadas no treinamento.
     /// </summary>
-    internal static TransacaoFeatures ExtrairFeatures(Transacao transacao, Conta? remetente)
+    internal static TransacaoFeatures ExtrairFeatures(Transacao transacao, Conta? remetente, int transacoesRecentes = 0)
     {
         var hora = transacao.Timestamp.Hour;
         var score = remetente?.Score ?? 50; // Score padrão se conta não encontrada
@@ -75,7 +85,7 @@ public class MlRiskScoringService : IRiskScoringService, IDisposable
             Valor = valor,
             HoraDoDia = hora,
             ScoreRemetente = score,
-            TransacoesRecentes = 0, // Preenchido pelo caller se disponível
+            TransacoesRecentes = transacoesRecentes,
             IsValorRedondo = (valor >= 1000 && valor % 1000 == 0) ? 1f : 0f,
             IsHorarioEstranho = (hora >= 1 && hora <= 5) ? 1f : 0f,
             RazaoValorScore = score > 0 ? valor / score : valor

@@ -109,20 +109,40 @@ public class TransacaoRepository : ITransacaoRepository
             return new TransacaoStats();
         }
 
+        // Query única para contadores de status (um round-trip em vez de quatro)
+        var contadores = await transacoes
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Total = g.Count(),
+                Aprovadas = g.Count(t => t.Status == StatusTransacao.Aprovada),
+                Bloqueadas = g.Count(t => t.Status == StatusTransacao.Bloqueada),
+                Suspeitas = g.Count(t => t.Status == StatusTransacao.Suspeita),
+                AceitasProvisoria = g.Count(t => t.Status == StatusTransacao.AceitaProvisoria),
+            })
+            .FirstAsync();
+
+        // Aggregações de decimal separadas (compatibilidade SQLite + PostgreSQL)
+        var valorTotal = await transacoes.SumAsync(t => t.Valor);
+        var valorMedio = await transacoes.AverageAsync(t => t.Valor);
+
+        var temRiskScore = await transacoes.AnyAsync(t => t.RiskScore.HasValue);
+        var riskScoreMedio = temRiskScore
+            ? await transacoes
+                .Where(t => t.RiskScore.HasValue)
+                .AverageAsync(t => (double)t.RiskScore!.Value)
+            : 0.0;
+
         return new TransacaoStats
         {
-            Total = total,
-            Aprovadas = await transacoes.CountAsync(t => t.Status == StatusTransacao.Aprovada),
-            Bloqueadas = await transacoes.CountAsync(t => t.Status == StatusTransacao.Bloqueada),
-            Suspeitas = await transacoes.CountAsync(t => t.Status == StatusTransacao.Suspeita),
-            AceitasProvisoria = await transacoes.CountAsync(t => t.Status == StatusTransacao.AceitaProvisoria),
-            ValorTotal = await transacoes.SumAsync(t => t.Valor),
-            ValorMedio = await transacoes.AverageAsync(t => t.Valor),
-            RiskScoreMedio = await transacoes
-                .Where(t => t.RiskScore.HasValue)
-                .Select(t => t.RiskScore!.Value)
-                .DefaultIfEmpty(0f)
-                .AverageAsync()
+            Total = contadores.Total,
+            Aprovadas = contadores.Aprovadas,
+            Bloqueadas = contadores.Bloqueadas,
+            Suspeitas = contadores.Suspeitas,
+            AceitasProvisoria = contadores.AceitasProvisoria,
+            ValorTotal = valorTotal,
+            ValorMedio = valorMedio,
+            RiskScoreMedio = (float)riskScoreMedio,
         };
     }
 
