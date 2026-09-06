@@ -20,6 +20,19 @@ public class DataGeneratorTests
         var fraudes = dataset.Count(d => d.IsFraude);
         var legitimas = dataset.Count(d => !d.IsFraude);
 
+        // Distribuição padrão: 90% legítimas / 10% fraudes
+        Assert.Equal(100, fraudes);
+        Assert.Equal(900, legitimas);
+    }
+
+    [Fact]
+    public void GerarDataset_FracaoCustomizada_DeveRespeitarProporcao()
+    {
+        var dataset = DataGenerator.GerarDataset(1000, fracaoFraude: 0.50);
+
+        var fraudes = dataset.Count(d => d.IsFraude);
+        var legitimas = dataset.Count(d => !d.IsFraude);
+
         Assert.Equal(500, fraudes);
         Assert.Equal(500, legitimas);
     }

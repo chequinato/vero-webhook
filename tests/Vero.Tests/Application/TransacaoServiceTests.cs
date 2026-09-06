@@ -57,10 +57,11 @@ public class TransacaoServiceTests
         var transacao = CriarTransacao();
         _transacaoRepoMock.Setup(r => r.ExisteAsync(transacao.Id)).ReturnsAsync(false);
 
-        var resultado = await _service.ProcessarTransacaoAsync(transacao);
+        var (resultado, isDuplicata) = await _service.ProcessarTransacaoAsync(transacao);
 
         Assert.Equal(StatusTransacao.AceitaProvisoria, resultado.Status);
         Assert.Null(resultado.Motivo);
+        Assert.False(isDuplicata);
     }
 
     [Fact]
@@ -100,10 +101,11 @@ public class TransacaoServiceTests
         var transacao = CriarTransacao();
         _transacaoRepoMock.Setup(r => r.ExisteAsync(transacao.Id)).ReturnsAsync(false);
 
-        var resultado = await service.ProcessarTransacaoAsync(transacao);
+        var (resultado, isDuplicata) = await service.ProcessarTransacaoAsync(transacao);
 
         Assert.Equal(StatusTransacao.Bloqueada, resultado.Status);
         Assert.Equal("regra_teste", resultado.Motivo);
+        Assert.False(isDuplicata);
     }
 
     [Fact]
@@ -144,7 +146,7 @@ public class TransacaoServiceTests
     // ──────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task ProcessarTransacao_Duplicada_DeveRetornarExistente()
+    public async Task ProcessarTransacao_Duplicada_DeveRetornarExistenteComFlag()
     {
         var existente = CriarTransacao();
         existente.Status = StatusTransacao.Aprovada;
@@ -153,8 +155,9 @@ public class TransacaoServiceTests
         _transacaoRepoMock.Setup(r => r.ObterPorIdAsync(existente.Id)).ReturnsAsync(existente);
 
         var novaTransacao = CriarTransacao();
-        var resultado = await _service.ProcessarTransacaoAsync(novaTransacao);
+        var (resultado, isDuplicata) = await _service.ProcessarTransacaoAsync(novaTransacao);
 
+        Assert.True(isDuplicata);
         Assert.Equal(StatusTransacao.Aprovada, resultado.Status);
         _transacaoRepoMock.Verify(r => r.AdicionarAsync(It.IsAny<Transacao>()), Times.Never);
         _filaMock.Verify(f => f.EnviarParaAnaliseAsync(It.IsAny<string>()), Times.Never);
@@ -182,7 +185,7 @@ public class TransacaoServiceTests
         var transacao = CriarTransacao();
         _transacaoRepoMock.Setup(r => r.ExisteAsync(transacao.Id)).ReturnsAsync(false);
 
-        var resultado = await service.ProcessarTransacaoAsync(transacao);
+        var (resultado, _) = await service.ProcessarTransacaoAsync(transacao);
 
         Assert.Equal("regra_2", resultado.Motivo);
         regra3.Verify(r => r.Avaliar(It.IsAny<Transacao>()), Times.Never);
