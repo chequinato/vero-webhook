@@ -15,24 +15,51 @@ using Vero.ML.Services;
 var builder = WebApplication.CreateBuilder(args);
 
 // ────────────────────────────────────────────────────────────────
-// Banco de dados (PostgreSQL)
+// Determinar modo de execução: --dev usa SQLite InMemory (zero dependência)
 // ────────────────────────────────────────────────────────────────
-var connectionString = builder.Configuration.GetConnectionString("VeroDb")
-    ?? Environment.GetEnvironmentVariable("VERO_CONNECTION_STRING")
-    ?? throw new InvalidOperationException("Connection string não configurada. Defina ConnectionStrings:VeroDb ou VERO_CONNECTION_STRING.");
+var usarSqlite = args.Contains("--dev")
+    || builder.Configuration.GetValue<bool>("UseSqlite")
+    || Environment.GetEnvironmentVariable("VERO_USE_SQLITE") == "true";
 
 // ────────────────────────────────────────────────────────────────
-// Criptografia em repouso (AES-256)
+// Banco de dados
 // ────────────────────────────────────────────────────────────────
-var encryptionKey = builder.Configuration["Encryption:Key"]
-    ?? Environment.GetEnvironmentVariable("VERO_ENCRYPTION_KEY")
-    ?? throw new InvalidOperationException("Chave de criptografia não configurada. Defina Encryption:Key ou VERO_ENCRYPTION_KEY.");
+if (usarSqlite)
+{
+    // SQLite em memória com cache compartilhado — persiste enquanto a API estiver rodando
+    builder.Services.AddDbContext<VeroDbContext>(options =>
+        options.UseSqlite("DataSource=VeroDev;Mode=Memory;Cache=Shared"));
 
-var cryptoService = new AesCryptoService(encryptionKey);
-builder.Services.AddSingleton<ICryptoService>(cryptoService);
+    // Manter uma conexão aberta para o banco em memória não ser destruído
+    var keepAliveConnection = new Microsoft.Data.Sqlite.SqliteConnection("DataSource=VeroDev;Mode=Memory;Cache=Shared");
+    keepAliveConnection.Open();
+    builder.Services.AddSingleton(keepAliveConnection);
 
-builder.Services.AddDbContext<VeroDbContext>(options =>
-    options.UseNpgsql(connectionString));
+    builder.Logging.AddConsole();
+    Console.WriteLine("🔧 Modo DEV: usando SQLite em memória (sem PostgreSQL)");
+}
+else
+{
+    var connectionString = builder.Configuration.GetConnectionString("VeroDb")
+        ?? Environment.GetEnvironmentVariable("VERO_CONNECTION_STRING")
+        ?? throw new InvalidOperationException("Connection string não configurada. Defina ConnectionStrings:VeroDb ou VERO_CONNECTION_STRING.");
+
+    builder.Services.AddDbContext<VeroDbContext>(options =>
+        options.UseNpgsql(connectionString));
+}
+
+// ────────────────────────────────────────────────────────────────
+// Criptografia em repouso (AES-256) — desabilitada em modo SQLite/dev
+// ────────────────────────────────────────────────────────────────
+if (!usarSqlite)
+{
+    var encryptionKey = builder.Configuration["Encryption:Key"]
+        ?? Environment.GetEnvironmentVariable("VERO_ENCRYPTION_KEY")
+        ?? throw new InvalidOperationException("Chave de criptografia não configurada. Defina Encryption:Key ou VERO_ENCRYPTION_KEY.");
+
+    var cryptoService = new AesCryptoService(encryptionKey);
+    builder.Services.AddSingleton<ICryptoService>(cryptoService);
+}
 
 // ────────────────────────────────────────────────────────────────
 // Repositórios
@@ -90,6 +117,11 @@ builder.Services.AddCors(options =>
 });
 
 // ────────────────────────────────────────────────────────────────
+// Seeder (registrar para DI)
+// ────────────────────────────────────────────────────────────────
+builder.Services.AddScoped<DevDataSeeder>();
+
+// ────────────────────────────────────────────────────────────────
 // Controllers
 // ────────────────────────────────────────────────────────────────
 builder.Services.AddControllers();
@@ -97,11 +129,31 @@ builder.Services.AddControllers();
 var app = builder.Build();
 
 // ────────────────────────────────────────────────────────────────
+// Inicialização do banco e seeder (modo dev)
+// ────────────────────────────────────────────────────────────────
+if (usarSqlite)
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<VeroDbContext>();
+
+    // Criar schema sem migrations (SQLite InMemory não persiste migrations)
+    await db.Database.EnsureCreatedAsync();
+
+    // Semear dados de desenvolvimento
+    var seeder = scope.ServiceProvider.GetRequiredService<DevDataSeeder>();
+    await seeder.SeedAsync(totalTransacoes: 300);
+}
+
+// ────────────────────────────────────────────────────────────────
 // Pipeline de middlewares (ordem importa!)
 // ────────────────────────────────────────────────────────────────
 app.UseCors("DashboardPolicy");
 
-app.UseHttpsRedirection();
+// Não redirecionar para HTTPS em modo dev
+if (!usarSqlite)
+{
+    app.UseHttpsRedirection();
+}
 
 // 1. Rate Limiting — primeiro, antes de processar qualquer coisa
 app.UseCustomRateLimiting();
