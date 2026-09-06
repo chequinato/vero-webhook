@@ -122,11 +122,12 @@ public class RiskScoringServiceTests : IDisposable
         };
         var conta = new Conta { Score = 40 };
 
-        var features = MlRiskScoringService.ExtrairFeatures(transacao, conta);
+        var features = MlRiskScoringService.ExtrairFeatures(transacao, conta, transacoesRecentes: 3);
 
         Assert.Equal(5000f, features.Valor);
         Assert.Equal(3f, features.HoraDoDia);
         Assert.Equal(40f, features.ScoreRemetente);
+        Assert.Equal(3f, features.TransacoesRecentes);
         Assert.Equal(1f, features.IsValorRedondo); // 5000 é múltiplo de 1000
         Assert.Equal(1f, features.IsHorarioEstranho); // 3h está entre 1-5
         Assert.Equal(5000f / 40f, features.RazaoValorScore);
