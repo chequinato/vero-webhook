@@ -3,9 +3,11 @@ using Moq;
 using Vero.Api.Controllers;
 using Vero.Api.DTOs.Requests;
 using Vero.Api.DTOs.Responses;
+using Vero.Api.Hubs;
 using Vero.Domain.Entities;
 using Vero.Domain.Enums;
 using Vero.Domain.Interfaces;
+using Microsoft.AspNetCore.SignalR;
 
 namespace Vero.Tests.Api;
 
@@ -13,6 +15,8 @@ public class TransactionsControllerTests
 {
     private readonly Mock<ITransacaoService> _serviceMock;
     private readonly Mock<IContaRepository> _contaRepoMock;
+    private readonly Mock<IRiskScoringService> _riskScoringMock;
+    private readonly TransactionHubNotifier _hubNotifier;
     private readonly TransactionsController _controller;
 
     private static readonly Conta ContaRemetente = new()
@@ -29,7 +33,25 @@ public class TransactionsControllerTests
     {
         _serviceMock = new Mock<ITransacaoService>();
         _contaRepoMock = new Mock<IContaRepository>();
-        _controller = new TransactionsController(_serviceMock.Object, _contaRepoMock.Object);
+        _riskScoringMock = new Mock<IRiskScoringService>();
+
+        // Mock do SignalR hub context
+        var hubContextMock = new Mock<IHubContext<TransactionHub>>();
+        var clientsMock = new Mock<IHubClients>();
+        var clientProxyMock = new Mock<IClientProxy>();
+        clientsMock.Setup(c => c.All).Returns(clientProxyMock.Object);
+        hubContextMock.Setup(h => h.Clients).Returns(clientsMock.Object);
+        _hubNotifier = new TransactionHubNotifier(hubContextMock.Object);
+
+        // Risk scoring padrão: retorna 0.15 (baixo risco)
+        _riskScoringMock.Setup(r => r.CalcularRiscoAsync(It.IsAny<Transacao>(), It.IsAny<Conta?>()))
+            .ReturnsAsync(0.15f);
+
+        _controller = new TransactionsController(
+            _serviceMock.Object,
+            _contaRepoMock.Object,
+            _riskScoringMock.Object,
+            _hubNotifier);
 
         // Setup padrão: contas existem
         _contaRepoMock.Setup(r => r.ObterPorNumeroContaAsync("conta_123"))
@@ -70,6 +92,22 @@ public class TransactionsControllerTests
         var dto = Assert.IsType<TransacaoResponseDto>(accepted.Value);
         Assert.Equal("aceita_provisoria", dto.Status);
         Assert.Equal(request.Id, dto.Id);
+    }
+
+    [Fact]
+    public async Task Post_TransacaoNormal_DeveIncluirRiskScore()
+    {
+        var request = CriarRequest();
+        _serviceMock.Setup(s => s.ConsultarStatusAsync(request.Id)).ReturnsAsync((Transacao?)null);
+        _serviceMock.Setup(s => s.ProcessarTransacaoAsync(It.IsAny<Transacao>()))
+            .ReturnsAsync(new Transacao { Id = request.Id, Status = StatusTransacao.AceitaProvisoria });
+
+        var result = await _controller.ReceberTransacao(request);
+
+        var accepted = Assert.IsType<AcceptedResult>(result);
+        var dto = Assert.IsType<TransacaoResponseDto>(accepted.Value);
+        Assert.NotNull(dto.RiskScore);
+        Assert.Equal(0.15f, dto.RiskScore);
     }
 
     // ──────────────────────────────────────────────────────────
@@ -150,6 +188,7 @@ public class TransactionsControllerTests
             Id = "txn_001",
             Status = StatusTransacao.Aprovada,
             Motivo = null,
+            RiskScore = 0.12f,
             CreatedAt = DateTime.UtcNow
         };
         _serviceMock.Setup(s => s.ConsultarStatusAsync("txn_001")).ReturnsAsync(transacao);
@@ -160,6 +199,7 @@ public class TransactionsControllerTests
         var dto = Assert.IsType<TransacaoStatusResponseDto>(ok.Value);
         Assert.Equal("txn_001", dto.Id);
         Assert.Equal("aprovada", dto.Status);
+        Assert.Equal(0.12f, dto.RiskScore);
     }
 
     [Fact]

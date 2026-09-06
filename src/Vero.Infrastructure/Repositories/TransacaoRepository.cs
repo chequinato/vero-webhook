@@ -79,4 +79,71 @@ public class TransacaoRepository : ITransacaoRepository
                           && t.Timestamp >= inicio
                           && t.Timestamp <= fim);
     }
+
+    public async Task<(IReadOnlyList<Transacao> Items, int Total)> ListarPaginadoAsync(
+        int pagina, int tamanhoPagina, StatusTransacao? filtroStatus = null)
+    {
+        var query = _context.Transacoes.AsQueryable();
+
+        if (filtroStatus.HasValue)
+            query = query.Where(t => t.Status == filtroStatus.Value);
+
+        var total = await query.CountAsync();
+
+        var items = await query
+            .OrderByDescending(t => t.CreatedAt)
+            .Skip((pagina - 1) * tamanhoPagina)
+            .Take(tamanhoPagina)
+            .ToListAsync();
+
+        return (items, total);
+    }
+
+    public async Task<TransacaoStats> ObterEstatisticasAsync()
+    {
+        var transacoes = _context.Transacoes;
+
+        var total = await transacoes.CountAsync();
+        if (total == 0)
+        {
+            return new TransacaoStats();
+        }
+
+        return new TransacaoStats
+        {
+            Total = total,
+            Aprovadas = await transacoes.CountAsync(t => t.Status == StatusTransacao.Aprovada),
+            Bloqueadas = await transacoes.CountAsync(t => t.Status == StatusTransacao.Bloqueada),
+            Suspeitas = await transacoes.CountAsync(t => t.Status == StatusTransacao.Suspeita),
+            AceitasProvisoria = await transacoes.CountAsync(t => t.Status == StatusTransacao.AceitaProvisoria),
+            ValorTotal = await transacoes.SumAsync(t => t.Valor),
+            ValorMedio = await transacoes.AverageAsync(t => t.Valor),
+            RiskScoreMedio = await transacoes
+                .Where(t => t.RiskScore.HasValue)
+                .Select(t => t.RiskScore!.Value)
+                .DefaultIfEmpty(0f)
+                .AverageAsync()
+        };
+    }
+
+    public async Task<IReadOnlyList<VolumeHora>> ObterVolumePorHoraAsync()
+    {
+        var inicio = DateTime.UtcNow.AddHours(-24);
+
+        var volumes = await _context.Transacoes
+            .Where(t => t.CreatedAt >= inicio)
+            .GroupBy(t => new { t.CreatedAt.Date, t.CreatedAt.Hour })
+            .Select(g => new VolumeHora
+            {
+                Hora = g.Key.Date.AddHours(g.Key.Hour),
+                Quantidade = g.Count(),
+                Valor = g.Sum(t => t.Valor),
+                Bloqueadas = g.Count(t => t.Status == StatusTransacao.Bloqueada),
+                Suspeitas = g.Count(t => t.Status == StatusTransacao.Suspeita)
+            })
+            .OrderBy(v => v.Hora)
+            .ToListAsync();
+
+        return volumes;
+    }
 }

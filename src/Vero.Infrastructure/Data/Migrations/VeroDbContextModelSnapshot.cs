@@ -58,33 +58,33 @@ namespace Vero.Infrastructure.Data.Migrations
                         {
                             Id = 1,
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            NumeroConta = "uecKgu2+3EYaeCwAwPnLCbamRGcwkol1yTOH8JpYqDE=",
+                            NumeroConta = "2TTZ5SJPpMs8RPfGo3aWUU+vYIllRo+TUDS9sBJv5sk=",
                             Score = 85,
-                            Titular = "mjK5d5tKc64yOSjSWyN5VVZwgUmyYuqKwgp13lJttL0="
+                            Titular = "6JESD97Lb0dq6zQPe2zKC8rs8cq4Lx7c0cf8Dlhha9g="
                         },
                         new
                         {
                             Id = 2,
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            NumeroConta = "+ri/QrzarFX5/WLGqBLY/s9ZUePf8pw4Csd6mQuLeQI=",
+                            NumeroConta = "0rD2NYwW2X/Gps58UceNhhCpa8kHvO2276ruT/bOUxE=",
                             Score = 72,
-                            Titular = "dhb8sXEAGLzFb4aUHkwqC8B/lOTLUCB9GbpWXKJR1L4="
+                            Titular = "EpuQRff7G2eZ9NHpahR4spp+chyEDLWiUqqj9ja8SR0="
                         },
                         new
                         {
                             Id = 3,
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            NumeroConta = "a49H6w7Hc0b6pGwbMGpOiNZfpWZuh6JkQnUWHu914j8=",
+                            NumeroConta = "nUUIRi6+yaRK2KPdD5Hm72e/JGSHMVN8q5gi/e24Kdw=",
                             Score = 25,
-                            Titular = "BAWhifphIXq6xGIw7qGAcumcGTGRHvhOHLsl7xP0EnE="
+                            Titular = "c6NVax4PcqHNHcl+Ohrd0+FyMtuEKODWIG8XSZ0U9Mk="
                         },
                         new
                         {
                             Id = 4,
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            NumeroConta = "0GhHaC/ixRRv4WVqRbz0DMeoULMBuFMB0WQGPqMARkk=",
+                            NumeroConta = "Erdf3QglevxAIi1yTiXTNm7gF3JX8vC/LxsCWIjGPRg=",
                             Score = 50,
-                            Titular = "+FEEYd9uptV26JP6MfdR19BFQRNBxRWePBIzpUn7dsg="
+                            Titular = "YdGE2uLU7ltHGH57wKwe8D/WLRobhNGoNfwOLPm3pxY="
                         });
                 });
 
@@ -111,6 +111,9 @@ namespace Vero.Infrastructure.Data.Migrations
 
                     b.Property<int>("RemetenteId")
                         .HasColumnType("integer");
+
+                    b.Property<float?>("RiskScore")
+                        .HasColumnType("real");
 
                     b.Property<string>("Status")
                         .IsRequired()

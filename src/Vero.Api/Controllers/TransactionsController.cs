@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Vero.Api.DTOs.Requests;
 using Vero.Api.DTOs.Responses;
+using Vero.Api.Hubs;
 using Vero.Domain.Entities;
 using Vero.Domain.Enums;
 using Vero.Domain.Interfaces;
@@ -13,15 +14,24 @@ public class TransactionsController : ControllerBase
 {
     private readonly ITransacaoService _transacaoService;
     private readonly IContaRepository _contaRepository;
+    private readonly IRiskScoringService _riskScoringService;
+    private readonly TransactionHubNotifier _hubNotifier;
 
-    public TransactionsController(ITransacaoService transacaoService, IContaRepository contaRepository)
+    public TransactionsController(
+        ITransacaoService transacaoService,
+        IContaRepository contaRepository,
+        IRiskScoringService riskScoringService,
+        TransactionHubNotifier hubNotifier)
     {
         _transacaoService = transacaoService;
         _contaRepository = contaRepository;
+        _riskScoringService = riskScoringService;
+        _hubNotifier = hubNotifier;
     }
 
     /// <summary>
     /// POST /transactions — recebe uma transação via webhook.
+    /// Aplica regras síncronas + ML risk scoring.
     /// </summary>
     [HttpPost]
     public async Task<IActionResult> ReceberTransacao([FromBody] TransacaoRequestDto request)
@@ -59,21 +69,40 @@ public class TransactionsController : ControllerBase
             Timestamp = request.Timestamp
         };
 
+        // ML Risk Scoring — calcular antes de processar
+        var riskScore = await _riskScoringService.CalcularRiscoAsync(transacao, remetente);
+        transacao.RiskScore = riskScore;
+
         var resultado = await _transacaoService.ProcessarTransacaoAsync(transacao);
+
+        // Notificar dashboard em tempo real
+        await _hubNotifier.NotificarTransacaoRecebida(new
+        {
+            id = resultado.Id,
+            status = resultado.Status.ToString().ToLowerInvariant(),
+            valor = resultado.Valor,
+            tipo = resultado.Tipo,
+            moeda = resultado.Moeda,
+            motivo = resultado.Motivo,
+            riskScore = resultado.RiskScore,
+            timestamp = resultado.Timestamp
+        });
 
         if (resultado.Status == StatusTransacao.Bloqueada)
         {
             return StatusCode(403, new TransacaoResponseDto
             {
                 Status = "bloqueada",
-                Motivo = resultado.Motivo
+                Motivo = resultado.Motivo,
+                RiskScore = riskScore
             });
         }
 
         return Accepted(new TransacaoResponseDto
         {
             Status = "aceita_provisoria",
-            Id = resultado.Id
+            Id = resultado.Id,
+            RiskScore = riskScore
         });
     }
 
@@ -92,7 +121,8 @@ public class TransactionsController : ControllerBase
             Id = transacao.Id,
             Status = transacao.Status.ToString().ToLowerInvariant(),
             Motivo = transacao.Motivo,
-            AnalisadaEm = transacao.CreatedAt
+            AnalisadaEm = transacao.CreatedAt,
+            RiskScore = transacao.RiskScore
         });
     }
 

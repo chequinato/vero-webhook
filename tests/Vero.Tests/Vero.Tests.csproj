@@ -26,6 +26,7 @@
     <ProjectReference Include="..\..\src\Vero.Application\Vero.Application.csproj" />
     <ProjectReference Include="..\..\src\Vero.Api\Vero.Api.csproj" />
     <ProjectReference Include="..\..\src\Vero.Infrastructure\Vero.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Vero.ML\Vero.ML.csproj" />
   </ItemGroup>
 
 </Project>
