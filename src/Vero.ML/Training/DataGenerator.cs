@@ -6,6 +6,10 @@ namespace Vero.ML.Training;
 /// Gera dados sintéticos de treinamento para o modelo de detecção de fraude.
 /// Os padrões são baseados nas regras existentes do sistema, com ruído
 /// adicionado para que o modelo aprenda a generalizar.
+///
+/// A distribuição padrão é 90% legítimas / 10% fraudes, mais próxima da
+/// realidade. O modelo é treinado com FastTree que lida bem com classes
+/// desbalanceadas quando a separação é clara.
 /// </summary>
 public static class DataGenerator
 {
@@ -14,16 +18,18 @@ public static class DataGenerator
     /// <summary>
     /// Gera um dataset de treinamento com transações legítimas e fraudulentas.
     /// </summary>
-    /// <param name="totalAmostras">Total de amostras a gerar (50% fraude, 50% legítima)</param>
-    public static List<TransacaoFeatures> GerarDataset(int totalAmostras = 10_000)
+    /// <param name="totalAmostras">Total de amostras a gerar</param>
+    /// <param name="fracaoFraude">Fração de amostras fraudulentas (padrão: 10%)</param>
+    public static List<TransacaoFeatures> GerarDataset(int totalAmostras = 10_000, double fracaoFraude = 0.10)
     {
         var dataset = new List<TransacaoFeatures>();
-        var metade = totalAmostras / 2;
+        var totalFraudes = (int)(totalAmostras * fracaoFraude);
+        var totalLegitimas = totalAmostras - totalFraudes;
 
         // ──────────────────────────────────────────────────────────
         // Transações LEGÍTIMAS
         // ──────────────────────────────────────────────────────────
-        for (int i = 0; i < metade; i++)
+        for (int i = 0; i < totalLegitimas; i++)
         {
             dataset.Add(GerarTransacaoLegitima());
         }
@@ -31,7 +37,7 @@ public static class DataGenerator
         // ──────────────────────────────────────────────────────────
         // Transações FRAUDULENTAS (baseadas nos padrões das regras)
         // ──────────────────────────────────────────────────────────
-        for (int i = 0; i < metade; i++)
+        for (int i = 0; i < totalFraudes; i++)
         {
             dataset.Add(GerarTransacaoFraudulenta());
         }
@@ -64,7 +70,7 @@ public static class DataGenerator
     private static TransacaoFeatures GerarTransacaoFraudulenta()
     {
         // Seleciona aleatoriamente um padrão de fraude
-        var padrao = _random.Next(0, 5);
+        var padrao = _random.Next(0, 6);
 
         return padrao switch
         {

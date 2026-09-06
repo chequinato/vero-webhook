@@ -14,17 +14,20 @@ public class TransactionsController : ControllerBase
 {
     private readonly ITransacaoService _transacaoService;
     private readonly IContaRepository _contaRepository;
+    private readonly ITransacaoRepository _transacaoRepository;
     private readonly IRiskScoringService _riskScoringService;
     private readonly TransactionHubNotifier _hubNotifier;
 
     public TransactionsController(
         ITransacaoService transacaoService,
         IContaRepository contaRepository,
+        ITransacaoRepository transacaoRepository,
         IRiskScoringService riskScoringService,
         TransactionHubNotifier hubNotifier)
     {
         _transacaoService = transacaoService;
         _contaRepository = contaRepository;
+        _transacaoRepository = transacaoRepository;
         _riskScoringService = riskScoringService;
         _hubNotifier = hubNotifier;
     }
@@ -32,6 +35,7 @@ public class TransactionsController : ControllerBase
     /// <summary>
     /// POST /transactions — recebe uma transação via webhook.
     /// Aplica regras síncronas + ML risk scoring.
+    /// Checagem de replay unificada: apenas o TransacaoService verifica duplicatas.
     /// </summary>
     [HttpPost]
     public async Task<IActionResult> ReceberTransacao([FromBody] TransacaoRequestDto request)
@@ -39,24 +43,18 @@ public class TransactionsController : ControllerBase
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
-        // Proteção contra replay: verifica se a transação já foi processada
-        var existente = await _transacaoService.ConsultarStatusAsync(request.Id);
-        if (existente is not null)
-        {
-            return Conflict(new TransacaoResponseDto
-            {
-                Status = existente.Status.ToString().ToLowerInvariant(),
-                Motivo = "transacao_duplicada",
-                Id = existente.Id
-            });
-        }
-
         // Resolver contas pelo NumeroConta
         var remetente = await _contaRepository.ObterPorNumeroContaAsync(request.Remetente);
         var destinatario = await _contaRepository.ObterPorNumeroContaAsync(request.Destinatario);
 
         if (remetente is null || destinatario is null)
             return BadRequest(new { erro = "Conta remetente ou destinatária não encontrada." });
+
+        // Velocity: contar transações do remetente nos últimos 5 minutos
+        var transacoesRecentes = await _transacaoRepository.ContarPorRemetenteNoPeriodoAsync(
+            remetente.Id,
+            DateTime.UtcNow.AddMinutes(-5),
+            DateTime.UtcNow);
 
         var transacao = new Transacao
         {
@@ -70,10 +68,21 @@ public class TransactionsController : ControllerBase
         };
 
         // ML Risk Scoring — calcular antes de processar
-        var riskScore = await _riskScoringService.CalcularRiscoAsync(transacao, remetente);
+        var riskScore = await _riskScoringService.CalcularRiscoAsync(transacao, remetente, transacoesRecentes);
         transacao.RiskScore = riskScore;
 
-        var resultado = await _transacaoService.ProcessarTransacaoAsync(transacao);
+        // Processar (o TransacaoService cuida da checagem de duplicata)
+        var (resultado, isDuplicata) = await _transacaoService.ProcessarTransacaoAsync(transacao);
+
+        if (isDuplicata)
+        {
+            return Conflict(new TransacaoResponseDto
+            {
+                Status = resultado.Status.ToString().ToLowerInvariant(),
+                Motivo = "transacao_duplicada",
+                Id = resultado.Id
+            });
+        }
 
         // Notificar dashboard em tempo real
         await _hubNotifier.NotificarTransacaoRecebida(new

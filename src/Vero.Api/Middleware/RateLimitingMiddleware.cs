@@ -19,6 +19,12 @@ public class RateLimitingMiddleware
     /// </summary>
     private static readonly ConcurrentDictionary<string, SlidingWindow> _janelas = new();
 
+    /// <summary>
+    /// Timer que limpa IPs inativos periodicamente para evitar memory leak.
+    /// </summary>
+    private static readonly Timer _cleanupTimer = new(LimparJanelasExpiradas, null,
+        TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
+
     public RateLimitingMiddleware(
         RequestDelegate next,
         IConfiguration configuration,
@@ -65,6 +71,21 @@ public class RateLimitingMiddleware
 
         return context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
     }
+
+    /// <summary>
+    /// Remove IPs cujo sliding window está vazio (sem requisições recentes).
+    /// Chamado periodicamente pelo timer para evitar crescimento ilimitado da memória.
+    /// </summary>
+    private static void LimparJanelasExpiradas(object? state)
+    {
+        foreach (var kvp in _janelas)
+        {
+            if (kvp.Value.EstaVazio)
+            {
+                _janelas.TryRemove(kvp.Key, out _);
+            }
+        }
+    }
 }
 
 /// <summary>
@@ -75,6 +96,26 @@ internal class SlidingWindow
 {
     private readonly Queue<DateTime> _timestamps = new();
     private readonly object _lock = new();
+
+    /// <summary>
+    /// Indica se a janela não contém timestamps (IP inativo).
+    /// </summary>
+    public bool EstaVazio
+    {
+        get
+        {
+            lock (_lock)
+            {
+                // Limpa expirados antes de verificar
+                var limiteInferior = DateTime.UtcNow.AddMinutes(-2);
+                while (_timestamps.Count > 0 && _timestamps.Peek() < limiteInferior)
+                {
+                    _timestamps.Dequeue();
+                }
+                return _timestamps.Count == 0;
+            }
+        }
+    }
 
     /// <summary>
     /// Tenta registrar uma nova requisição. Retorna false se o limite foi atingido.

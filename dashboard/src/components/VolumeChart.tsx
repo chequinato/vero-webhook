@@ -1,3 +1,4 @@
+import { Activity } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
@@ -64,6 +65,3 @@ export function VolumeChart({ data }: VolumeChartProps) {
     </ResponsiveContainer>
   );
 }
-
-// Import needed for empty state
-import { Activity } from 'lucide-react';

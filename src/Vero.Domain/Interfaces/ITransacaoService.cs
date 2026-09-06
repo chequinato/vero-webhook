@@ -11,8 +11,8 @@ public interface ITransacaoService
     /// Processa uma transação recebida via webhook: valida, aplica regras síncronas,
     /// persiste e enfileira para análise assíncrona se necessário.
     /// </summary>
-    /// <returns>A transação processada com status definido.</returns>
-    Task<Transacao> ProcessarTransacaoAsync(Transacao transacao);
+    /// <returns>Tupla com a transação processada e um bool indicando se era duplicata.</returns>
+    Task<(Transacao Transacao, bool IsDuplicata)> ProcessarTransacaoAsync(Transacao transacao);
 
     /// <summary>
     /// Consulta o status atual de uma transação.

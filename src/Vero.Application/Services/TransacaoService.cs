@@ -28,13 +28,13 @@ public class TransacaoService : ITransacaoService
         _regrasSincronas = regrasSincronas;
     }
 
-    public async Task<Transacao> ProcessarTransacaoAsync(Transacao transacao)
+    public async Task<(Transacao Transacao, bool IsDuplicata)> ProcessarTransacaoAsync(Transacao transacao)
     {
         // Proteção contra replay: se a transação já existe, não processa de novo
         if (await _transacaoRepository.ExisteAsync(transacao.Id))
         {
             var existente = await _transacaoRepository.ObterPorIdAsync(transacao.Id);
-            return existente!;
+            return (existente!, IsDuplicata: true);
         }
 
         // Aplicar regras síncronas (bloqueio imediato)
@@ -45,7 +45,7 @@ public class TransacaoService : ITransacaoService
                 transacao.Status = StatusTransacao.Bloqueada;
                 transacao.Motivo = regra.Nome;
                 await _transacaoRepository.AdicionarAsync(transacao);
-                return transacao;
+                return (transacao, IsDuplicata: false);
             }
         }
 
@@ -56,7 +56,7 @@ public class TransacaoService : ITransacaoService
         // Envia para análise assíncrona
         await _filaTransacao.EnviarParaAnaliseAsync(transacao.Id);
 
-        return transacao;
+        return (transacao, IsDuplicata: false);
     }
 
     public async Task<Transacao?> ConsultarStatusAsync(string transacaoId)
