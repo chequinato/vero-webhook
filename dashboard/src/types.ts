@@ -39,6 +39,30 @@ export interface PaginatedResponse {
   totalPages: number;
 }
 
+export interface MlMetrics {
+  modelLoaded: boolean;
+  lastTrained: string | null;
+  algorithm: string;
+  features: string[];
+}
+
+/** Resposta de POST /api/dashboard/transactions/{id}/reavaliar. */
+export interface Reavaliacao {
+  id: string;
+  status: string;
+  motivo: string | null;
+  riskScore: number;
+  limiar: number;
+}
+
+/** Payload de `StatusAtualizado` vindo do hub. */
+export interface StatusPatch {
+  id: string;
+  status: string;
+  motivo: string | null;
+  riskScore: number | null;
+}
+
 export interface AlertItem {
   id: string;
   transacaoId: string;
