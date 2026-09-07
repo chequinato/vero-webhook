@@ -9,6 +9,15 @@ public interface ITransacaoRepository
     Task<bool> ExisteAsync(string id);
     Task AdicionarAsync(Transacao transacao);
     Task AtualizarStatusAsync(string transacaoId, StatusTransacao novoStatus, string? motivo);
+
+    /// <summary>
+    /// Atualiza status e score numa única transação de banco. Usado pela
+    /// reavaliação sob demanda, em que o modelo produz um score novo junto
+    /// com a decisão — gravar os dois separadamente deixaria uma janela em
+    /// que a linha mostra a decisão nova com o score velho.
+    /// </summary>
+    Task AtualizarStatusEScoreAsync(
+        string transacaoId, StatusTransacao novoStatus, string? motivo, float riskScore);
     Task<IReadOnlyList<Transacao>> ListarSuspeitasAsync();
 
     /// <summary>
