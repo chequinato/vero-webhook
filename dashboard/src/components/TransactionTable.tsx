@@ -11,18 +11,20 @@ interface TransactionTableProps {
   onPageChange: (p: number) => void;
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  aprovada: 'Aprovada',
-  bloqueada: 'Bloqueada',
-  suspeita: 'Suspeita',
-  aceitaprovisoria: 'Pendente',
+const STATUS_MAP: Record<string, { label: string; className: string }> = {
+  aprovada: { label: 'APR', className: 'status--aprovada' },
+  bloqueada: { label: 'BLK', className: 'status--bloqueada' },
+  suspeita: { label: 'SUS', className: 'status--suspeita' },
+  aceitaprovisoria: { label: 'PND', className: 'status--pendente' },
 };
 
-function StatusBadge({ status }: { status: string }) {
+function StatusIndicator({ status }: { status: string }) {
   const normalized = status.replace(/_/g, '').toLowerCase();
+  const mapped = STATUS_MAP[normalized] || { label: status.slice(0, 3).toUpperCase(), className: '' };
   return (
-    <span className={`badge ${normalized}`}>
-      {STATUS_LABELS[normalized] || status}
+    <span className={`status-indicator ${mapped.className}`}>
+      <span className="status-dot" />
+      {mapped.label}
     </span>
   );
 }
@@ -32,17 +34,20 @@ export function TransactionTable({
   filter, onFilterChange, onPageChange,
 }: TransactionTableProps) {
   const filters = [
-    { key: '', label: 'Todas' },
-    { key: 'bloqueada', label: 'Bloqueadas' },
-    { key: 'suspeita', label: 'Suspeitas' },
-    { key: 'aprovada', label: 'Aprovadas' },
-    { key: 'aceitaprovisoria', label: 'Pendentes' },
+    { key: '', label: 'All' },
+    { key: 'bloqueada', label: 'Blocked' },
+    { key: 'suspeita', label: 'Suspect' },
+    { key: 'aprovada', label: 'Approved' },
+    { key: 'aceitaprovisoria', label: 'Pending' },
   ];
 
   return (
-    <div className="table-card">
-      <div className="table-header">
-        <h3>Transações ({total})</h3>
+    <div className="table-container">
+      <div className="table-toolbar">
+        <div className="table-title">
+          Registros
+          <span className="table-title-count">{total}</span>
+        </div>
         <div className="table-filters">
           {filters.map(f => (
             <button
@@ -58,11 +63,11 @@ export function TransactionTable({
 
       {transactions.length === 0 ? (
         <div className="empty-state">
-          <p>Nenhuma transação encontrada</p>
+          <span>Nenhum registro encontrado</span>
         </div>
       ) : (
         <>
-          <div style={{ overflowX: 'auto' }}>
+          <div className="data-table-wrap">
             <table>
               <thead>
                 <tr>
@@ -70,28 +75,31 @@ export function TransactionTable({
                   <th>Status</th>
                   <th>Valor</th>
                   <th>Tipo</th>
-                  <th>Risk Score</th>
+                  <th>Risk</th>
                   <th>Motivo</th>
-                  <th>Data</th>
+                  <th>Timestamp</th>
                 </tr>
               </thead>
               <tbody>
-                {transactions.map(tx => (
-                  <tr key={tx.id}>
-                    <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{tx.id}</td>
-                    <td><StatusBadge status={tx.status} /></td>
-                    <td style={{ fontWeight: 600 }}>
+                {transactions.map((tx, i) => (
+                  <tr key={tx.id} style={{ animationDelay: `${i * 30}ms` }}>
+                    <td className="id-cell">{tx.id}</td>
+                    <td><StatusIndicator status={tx.status} /></td>
+                    <td className="value-cell">
                       R$ {tx.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </td>
-                    <td style={{ textTransform: 'uppercase', fontSize: 11, color: 'var(--text-muted)' }}>
+                    <td style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
                       {tx.tipo}
                     </td>
                     <td><RiskScore score={tx.riskScore} /></td>
-                    <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
-                      {tx.motivo || '—'}
-                    </td>
-                    <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                      {new Date(tx.timestamp).toLocaleString('pt-BR')}
+                    <td className="motivo-cell">{tx.motivo || '—'}</td>
+                    <td className="date-cell">
+                      {new Date(tx.timestamp).toLocaleString('pt-BR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
                     </td>
                   </tr>
                 ))}
@@ -101,14 +109,22 @@ export function TransactionTable({
 
           <div className="pagination">
             <span className="pagination-info">
-              Página {page} de {totalPages}
+              {page} / {totalPages}
             </span>
-            <div className="pagination-btns">
-              <button disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
-                ← Anterior
+            <div className="pagination-controls">
+              <button
+                className="pagination-btn"
+                disabled={page <= 1}
+                onClick={() => onPageChange(page - 1)}
+              >
+                ← Prev
               </button>
-              <button disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>
-                Próxima →
+              <button
+                className="pagination-btn"
+                disabled={page >= totalPages}
+                onClick={() => onPageChange(page + 1)}
+              >
+                Next →
               </button>
             </div>
           </div>

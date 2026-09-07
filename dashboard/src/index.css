@@ -1,34 +1,134 @@
-:root {
-  --bg-primary: #0f172a;
-  --bg-secondary: #1e293b;
-  --bg-card: #1e293b;
-  --bg-card-hover: #334155;
-  --border: #334155;
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
-  --accent: #3b82f6;
-  --accent-hover: #2563eb;
-  --success: #22c55e;
-  --warning: #f59e0b;
-  --danger: #ef4444;
-  --info: #06b6d4;
-  --purple: #a855f7;
+/* ═══════════════════════════════════════════════════════
+   VERO — Design System
+   Swiss Editorial × Spacecraft Telemetry × Industrial UI
+   ═══════════════════════════════════════════════════════ */
 
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+:root {
+  /* ── Surfaces ── */
+  --bg-void: #08080c;
+  --bg-base: #0c0c12;
+  --bg-surface: #14141c;
+  --bg-elevated: #1c1c26;
+  --bg-hover: #242430;
+
+  /* ── Borders ── */
+  --border: #28283a;
+  --border-strong: #363648;
+  --border-accent: rgba(0, 223, 162, 0.25);
+
+  /* ── Text ── */
+  --text-primary: #f0f0f4;
+  --text-secondary: #a0a0ac;
+  --text-muted: #626270;
+  --text-ghost: #363640;
+
+  /* ── Accent ── */
+  --accent: #00dfa2;
+  --accent-dim: rgba(0, 223, 162, 0.08);
+  --accent-medium: rgba(0, 223, 162, 0.15);
+
+  /* ── Semantic ── */
+  --danger: #ff4040;
+  --danger-dim: rgba(255, 64, 64, 0.08);
+  --warning: #dfa000;
+  --warning-dim: rgba(223, 160, 0, 0.08);
+  --success: #00dfa2;
+  --success-dim: rgba(0, 223, 162, 0.08);
+  --info: #4488cc;
+
+  /* ── Typography ── */
+  --font-sans: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', monospace;
+
+  /* ── Motion ── */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-fast: 200ms;
+  --duration-normal: 350ms;
+  --duration-slow: 500ms;
+
+  font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.5;
   color-scheme: dark;
   color: var(--text-primary);
-  background: var(--bg-primary);
+  background: var(--bg-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-* { margin: 0; padding: 0; box-sizing: border-box; }
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
 
-body { min-height: 100vh; }
+body {
+  min-height: 100vh;
+  background: var(--bg-base);
+}
 
-#root { min-height: 100vh; }
+#root {
+  min-height: 100vh;
+}
 
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--bg-primary); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+/* ── Scrollbar — Minimal ── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── Selection ── */
+::selection {
+  background: var(--accent-medium);
+  color: var(--text-primary);
+}
+
+/* ── Entry Animation ── */
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes enterScale {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes scanline {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes draw-line {
+  from { stroke-dashoffset: 1000; }
+  to { stroke-dashoffset: 0; }
+}
+
+.loading-skeleton {
+  background: linear-gradient(90deg, var(--bg-surface) 0%, var(--bg-elevated) 50%, var(--bg-surface) 100%);
+  background-size: 200% 100%;
+  animation: skeleton 1.8s var(--ease-in-out) infinite;
+}
+
+@keyframes skeleton {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
