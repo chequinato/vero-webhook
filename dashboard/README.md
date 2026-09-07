@@ -29,10 +29,12 @@ dotnet run --project src/Vero.Api -- --dev   # SQLite em memória, dados semeado
 A tela é **uma folha de papel com faixas de telemetria cravadas nela**.
 Editorial suíço na composição, painel de instrumentos no comportamento.
 
-O ritmo da página alterna suporte: papel · faixa · papel · faixa · papel.
+O ritmo da página alterna suporte: faixa · papel · faixa · papel · faixa · papel.
+A primeira coisa que se vê não é um número parado — é a máquina rodando.
 
 | Seção | Suporte | Onde |
 |---|---|---|
+| 00 Motor de decisão (3D, ao vivo) | faixa invertida | `Engine.tsx`, `engine/` |
 | 01 Situação | papel | `src/components/Situation.tsx` |
 | 02 Fluxo por hora · 03 Feed ao vivo | faixa invertida | `VolumeChart.tsx`, `Feed.tsx` |
 | 04 Composição (anel, distribuição, curva de operação, matriz) | papel | `Composition.tsx` |
@@ -166,3 +168,50 @@ Enquanto a chamada está no ar, um fio varre a base do botão; quando o veredito
 chega, a linha se resolve na frente do operador e fica marcada na margem com a
 cor do desfecho, como um visto a lápis. Linhas já decididas não têm botão, e a
 API recusa reavaliá-las com 409.
+
+
+## O motor (seção 00)
+
+A faixa do topo é uma cena WebGL: a malha é o **pipeline real do Vero** e cada
+ponto que a atravessa é uma transação de verdade.
+
+```
+barramento → regras síncronas → modelo FastTree → regras assíncronas → decisão
+    1 nó           2 nós              7 nós              3 nós          4 portões
+```
+
+Os nomes saem do backend: as síncronas são `ValorAltoRule` e `ScoreBaixoRule`,
+as sete do meio são exatamente as features que `MlRiskScoringService.
+ExtrairFeatures` monta, e as assíncronas são `VelocityRule`,
+`HorarioEstranhoRule` e `ValorRedondoRule` (`src/engine/topologia.ts`).
+
+**Como se liga ao resto.** Na abertura, a amostra de 100 linhas já buscada
+atravessa a máquina uma vez — é a carga inicial. Depois, cada evento do hub
+entra pelo `src/engine/bus.ts`, um barramento próprio que **não passa pelo
+ciclo de render do React**: uma transação por segundo virando `setState`
+obrigaria a árvore inteira a repintar por causa de um ponto que se move.
+
+**Interação.** O ponteiro orbita a malha (paralaxe); passar sobre um nó acende
+suas arestas e mostra quantas transações já passaram por ele nesta sessão;
+clicar num portão de decisão filtra o registro por aquele estado e desce até
+ele.
+
+**Honestidade.** O desfecho e o escore de cada partícula são reais — vêm da
+API, e o portão em que ela pousa é a decisão que o backend tomou. O **trajeto
+pelo miolo é ilustrativo**: a API não devolve atribuição por feature, então o
+roteamento é derivado dos campos que temos (valor, hora, motivo, escore) de
+forma determinística — a mesma transação desenha sempre o mesmo caminho. A
+cena imprime essa ressalva no próprio cabeçalho.
+
+**Disciplina visual.** Blending normal, quadrados de aresta dura, zero bloom e
+zero gradiente. A cor só entra no último trecho, quando a decisão acontece: até
+ali a partícula é tinta neutra. A paleta é lida do CSS em tempo de execução,
+então o modo tinta continua sendo uma troca de tokens — inclusive dentro do
+WebGL, onde as arestas são interpoladas **entre o fundo da faixa e a tinta**,
+nunca escurecidas (escurecer viraria risco preto sobre papel claro).
+
+**Custo.** `three` entra por `React.lazy` num pedaço separado (~530 kB, 134 kB
+comprimido). A folha pinta antes; a faixa reserva a altura e mostra "montando o
+motor" enquanto o pedaço chega. O laço pausa quando a faixa sai da tela
+(`IntersectionObserver`) ou a aba fica oculta, e há caminho de degradação
+quando o navegador não tem WebGL.

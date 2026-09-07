@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { api, IS_DEMO } from './api';
 import { useSignalR } from './useSignalR';
 import { useClock } from './hooks/useClock';
@@ -11,6 +11,7 @@ import {
   aplicaPatch,
   casaFiltro,
 } from './live';
+import { lancar } from './engine/bus';
 import { Mark } from './components/Mark';
 import { Situation } from './components/Situation';
 import { VolumeChart } from './components/VolumeChart';
@@ -20,6 +21,13 @@ import { Observability } from './components/Observability';
 import { Ledger } from './components/Ledger';
 import type { Stats, VolumeHora, TransacaoDto, MlMetrics, StatusPatch } from './types';
 import './App.css';
+
+/**
+ * A cena 3D carrega o three.js inteiro (~600 kB). Ela é o palco, mas não pode
+ * atrasar a primeira pintura da folha: entra em pedaço separado, e o resto do
+ * boletim já está legível enquanto ela chega.
+ */
+const Engine = lazy(() => import('./components/Engine').then(m => ({ default: m.Engine })));
 
 type Mode = 'paper' | 'ink';
 
@@ -137,6 +145,10 @@ function App() {
     (tx: TransacaoDto) => {
       conhecidas.current.set(tx.id, { status: tx.status, riskScore: tx.riskScore });
 
+      // A cena 3D recebe o evento pelo barramento próprio, sem passar pelo
+      // ciclo de render — ver `engine/bus.ts`.
+      lancar(tx);
+
       setStats(s => (s ? somaTransacao(s, tx) : s));
       setTimeline(t => somaNaHora(t, tx));
       setAmostra(a => insereNoTopo(a, tx, AMOSTRA));
@@ -190,10 +202,19 @@ function App() {
 
   const { connected, alerts } = useSignalR({ onTransacao: aoChegar, onStatus: aoMudarStatus });
 
-  const handleFilterChange = (f: string) => {
+  const handleFilterChange = useCallback((f: string) => {
     setFilter(f);
     setPage(1);
-  };
+  }, []);
+
+  /** Clicar num portão do motor leva o registro junto e desce até ele. */
+  const filtrarPeloMotor = useCallback(
+    (status: string) => {
+      handleFilterChange(status);
+      document.querySelector('.log-head')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+    [handleFilterChange],
+  );
 
   /** Botão de reavaliação do livro: quem decide é o modelo. */
   const reavaliar = useCallback(
@@ -266,6 +287,23 @@ function App() {
             </span>
           </div>
         </header>
+
+        {/* ══ 00 — MOTOR (o palco) ══ */}
+        <Suspense
+          fallback={
+            <section className="motor">
+              <div className="motor-head">
+                <span>
+                  <span className="idx">00</span>{' '}
+                  <span className="name">Motor de decisão — ao vivo</span>
+                </span>
+              </div>
+              <div className="motor-palco motor-palco--espera">montando o motor</div>
+            </section>
+          }
+        >
+          <Engine amostra={amostra} conectado={connected} onFiltrar={filtrarPeloMotor} />
+        </Suspense>
 
         <div className="section-mark rv" style={{ ['--i' as string]: 1 }}>
           <span className="idx">01</span>
