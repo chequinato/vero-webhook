@@ -80,6 +80,30 @@ Vero/
 | `GET` | `/transactions/{id}` | Consulta status de uma transação |
 | `GET` | `/transactions?suspicious=true` | Lista transações suspeitas |
 | `GET` | `/health` | Healthcheck |
+| `GET` | `/api/dashboard/stats` | Agregados da janela corrente |
+| `GET` | `/api/dashboard/transactions` | Listagem paginada (`page`, `size` ≤ 100, `status`) |
+| `GET` | `/api/dashboard/timeline` | Volume por hora nas últimas 24h |
+| `GET` | `/api/dashboard/ml/metrics` | Estado e features do modelo |
+| `POST` | `/api/dashboard/transactions/{id}/reavaliar` | Submete uma transação em revisão ao modelo |
+
+### Reavaliação sob demanda
+
+`POST /api/dashboard/transactions/{id}/reavaliar` roda o modelo de novo sobre
+uma transação parada em revisão e resolve o caso: score no corte ou acima vira
+`bloqueada`, abaixo vira `aprovada`. O corte é `0.70`, declarado em
+`DashboardController.LimiarBloqueio` — o mesmo número que o painel imprime
+sobre a distribuição de risco.
+
+Não existe decisão manual: o operador dispara a avaliação, quem decide é o
+modelo. Transações já decididas devolvem **409**, para o painel não conseguir
+desfazer um bloqueio por fora de um fluxo próprio; id inexistente devolve
+**404**. O desfecho é persistido junto com o score novo numa transação de
+banco só, e anunciado no hub como `StatusAtualizado`.
+
+> ⚠️ As rotas `/api/dashboard/*` **não passam pelo middleware HMAC** — ele
+> cobre apenas o webhook `POST /transactions`. Isso era inofensivo enquanto o
+> dashboard só lia; a reavaliação muta estado. Antes de expor este host fora
+> da rede interna, a rota precisa de autenticação de operador.
 
 ## Regras de anomalia
 

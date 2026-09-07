@@ -1,4 +1,4 @@
-import { useCountUp } from '../hooks/useCountUp';
+import { Odometer } from './Odometer';
 import type { Stats } from '../types';
 
 /**
@@ -7,21 +7,11 @@ import type { Stats } from '../types';
  * Hierarquia deliberadamente desigual: um número monumental à esquerda,
  * quatro leituras secundárias numa pilha ao centro, e a proporção do dia
  * como uma barra vertical à direita. Nada aqui é um cartão.
+ *
+ * Todos os números rolam como contador mecânico em vez de contarem de
+ * zero: quando os dados voltam da API, só os dígitos que mudaram se
+ * mexem — o olho pega a mudança sem varrer o painel inteiro.
  */
-
-function Num({ value, prefix = '', suffix = '', decimals = 0, duration = 1100 }: {
-  value: number;
-  prefix?: string;
-  suffix?: string;
-  decimals?: number;
-  duration?: number;
-}) {
-  const n = useCountUp(value, duration);
-  const txt = decimals > 0
-    ? n.toLocaleString('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
-    : Math.round(n).toLocaleString('pt-BR');
-  return <>{prefix}{txt}{suffix}</>;
-}
 
 const brl = (v: number, decimals = 0) =>
   v.toLocaleString('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
@@ -30,6 +20,7 @@ export function Situation({ stats, loading }: { stats: Stats | null; loading: bo
   if (loading || !stats) return <SituationSkeleton />;
 
   const pct = (v: number) => (stats.total > 0 ? (v / stats.total) * 100 : 0);
+  const interceptacao = pct(stats.bloqueadas + stats.suspeitas);
 
   const readouts = [
     { label: 'Aprovadas', value: stats.aprovadas, sub: `${pct(stats.aprovadas).toFixed(1)}% do fluxo`, tone: 'success' },
@@ -52,7 +43,7 @@ export function Situation({ stats, loading }: { stats: Stats | null; loading: bo
       <div className="hero">
         <div className="hero-figure">
           <span className="hero-num rv-cut" style={{ ['--i' as string]: 1 }}>
-            <Num value={stats.total} duration={1300} />
+            <Odometer value={stats.total} duration={780} />
           </span>
           <span className="hero-sup rv" style={{ ['--i' as string]: 4 }}>
             transações
@@ -63,11 +54,24 @@ export function Situation({ stats, loading }: { stats: Stats | null; loading: bo
 
         <div className="hero-underline rv-rule" style={{ ['--i' as string]: 3 }} />
 
-        <p className="serif-note hero-note rv" style={{ ['--i' as string]: 5 }}>
-          Volume acumulado de <b>R$ {brl(stats.valorTotal)}</b>, ticket médio de{' '}
-          <b>R$ {brl(stats.valorMedio, 2)}</b>. O modelo atribui risco médio de{' '}
-          <b>{(stats.riskScoreMedio * 100).toFixed(1)}%</b> à janela corrente.
-        </p>
+        <div className="hero-par">
+          <p className="serif-note hero-note rv" style={{ ['--i' as string]: 5 }}>
+            Volume acumulado de <b>R$ {brl(stats.valorTotal)}</b>, ticket médio de{' '}
+            <b>R$ {brl(stats.valorMedio, 2)}</b>. O modelo atribui risco médio de{' '}
+            <b>{(stats.riskScoreMedio * 100).toFixed(1)}%</b> à janela corrente.
+          </p>
+
+          {/* Leitura de interceptação: o número que um analista procura primeiro. */}
+          <div className="hero-marca rv" style={{ ['--i' as string]: 6 }}>
+            <span className="hero-marca-num">
+              <Odometer value={interceptacao} decimals={1} suffix="%" />
+            </span>
+            <span className="hero-marca-lbl">
+              interceptação
+              <em>bloqueio + revisão</em>
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* ── Leituras secundárias ── */}
@@ -76,7 +80,7 @@ export function Situation({ stats, loading }: { stats: Stats | null; loading: bo
           <div className="readout rv" key={r.label} style={{ ['--i' as string]: 2 + i }}>
             <div className="readout-label">{r.label}</div>
             <div className="readout-val">
-              <Num value={r.value} duration={900 + i * 90} />
+              <Odometer value={r.value} duration={640 + i * 60} />
             </div>
             <div className={`readout-sub readout-sub--${r.tone}`}>{r.sub}</div>
           </div>

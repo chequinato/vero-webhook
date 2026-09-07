@@ -64,6 +64,29 @@ public class TransacaoRepository : ITransacaoRepository
         await _context.SaveChangesAsync();
     }
 
+    public async Task AtualizarStatusEScoreAsync(
+        string transacaoId, StatusTransacao novoStatus, string? motivo, float riskScore)
+    {
+        var transacao = await _context.Transacoes.FindAsync(transacaoId);
+        if (transacao is null) return;
+
+        var statusAnterior = transacao.Status.ToString();
+        transacao.Status = novoStatus;
+        transacao.Motivo = motivo;
+        transacao.RiskScore = riskScore;
+
+        await _context.TransacaoHistoricoStatus.AddAsync(new TransacaoHistoricoStatus
+        {
+            TransacaoId = transacaoId,
+            StatusAnterior = statusAnterior,
+            StatusNovo = novoStatus.ToString(),
+            Motivo = motivo,
+            AlteradoEm = DateTime.UtcNow
+        });
+
+        await _context.SaveChangesAsync();
+    }
+
     public async Task<IReadOnlyList<Transacao>> ListarSuspeitasAsync()
     {
         return await _context.Transacoes

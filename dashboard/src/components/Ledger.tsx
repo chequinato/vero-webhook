@@ -1,12 +1,18 @@
+import { useState } from 'react';
 import { Risk } from './Risk';
-import type { TransacaoDto } from '../types';
+import { chaveStatus } from '../live';
+import type { TransacaoDto, Reavaliacao } from '../types';
 
 /**
- * 04 — REGISTRO
+ * 06 — REGISTRO
  *
  * Tabela sem moldura: só fios horizontais, como um livro-caixa impresso.
  * O estado é um glifo geométrico (cheio / meio / vazio / cortado) antes de
  * ser uma cor, para continuar legível em impressão e em daltonismo.
+ *
+ * A última coluna é a fila de trabalho: toda linha ainda em revisão ganha um
+ * punção de avaliação. Apertar não decide nada — manda o modelo decidir, e a
+ * linha se resolve em aprovada ou bloqueada na frente do operador.
  */
 
 interface Props {
@@ -17,6 +23,7 @@ interface Props {
   filter: string;
   onFilterChange: (f: string) => void;
   onPageChange: (p: number) => void;
+  onReavaliar: (id: string) => Promise<Reavaliacao>;
 }
 
 const STATE: Record<string, { code: string; cls: string }> = {
@@ -25,6 +32,9 @@ const STATE: Record<string, { code: string; cls: string }> = {
   suspeita: { code: 'sus', cls: 'suspeita' },
   aceitaprovisoria: { code: 'pnd', cls: 'pendente' },
 };
+
+/** Estados que ainda esperam veredito e portanto podem ser reavaliados. */
+const PENDENTES = new Set(['suspeita', 'aceitaprovisoria']);
 
 const FILTERS = [
   { key: '', label: 'Tudo' },
@@ -35,7 +45,7 @@ const FILTERS = [
 ];
 
 function State({ status }: { status: string }) {
-  const key = status.replace(/_/g, '').toLowerCase();
+  const key = chaveStatus(status);
   const s = STATE[key] ?? { code: status.slice(0, 3).toLowerCase(), cls: '' };
   return (
     <span className={`state state--${s.cls}`}>
@@ -45,11 +55,48 @@ function State({ status }: { status: string }) {
   );
 }
 
-export function Ledger({ transactions, total, page, totalPages, filter, onFilterChange, onPageChange }: Props) {
+type Fase = 'parado' | 'rodando' | 'erro';
+
+export function Ledger({
+  transactions,
+  total,
+  page,
+  totalPages,
+  filter,
+  onFilterChange,
+  onPageChange,
+  onReavaliar,
+}: Props) {
+  const [fases, setFases] = useState<Record<string, Fase>>({});
+  const [erros, setErros] = useState<Record<string, string>>({});
+  const [resolvidas, setResolvidas] = useState<Record<string, string>>({});
+
+  const pendentesNaPagina = transactions.filter(t => PENDENTES.has(chaveStatus(t.status))).length;
+
+  const avaliar = async (id: string) => {
+    setFases(f => ({ ...f, [id]: 'rodando' }));
+    setErros(e => {
+      if (!(id in e)) return e;
+      const resto = { ...e };
+      delete resto[id];
+      return resto;
+    });
+
+    try {
+      const r = await onReavaliar(id);
+      setFases(f => ({ ...f, [id]: 'parado' }));
+      setResolvidas(v => ({ ...v, [id]: r.status }));
+    } catch (err) {
+      setFases(f => ({ ...f, [id]: 'erro' }));
+      setErros(e => ({ ...e, [id]: err instanceof Error ? err.message : 'falha na avaliação' }));
+    }
+  };
+
   return (
     <section>
       <div className="log-head">
         <h2 className="log-title rv-cut">
+          <span className="idx log-idx">06</span>
           Registro
           <span>{total.toLocaleString('pt-BR')} linhas</span>
         </h2>
@@ -74,41 +121,81 @@ export function Ledger({ transactions, total, page, totalPages, filter, onFilter
             <table>
               <thead>
                 <tr>
-                  <th style={{ width: '20%' }}>Identificador</th>
-                  <th style={{ width: '8%' }}>Estado</th>
-                  <th style={{ width: '14%' }}>Valor</th>
-                  <th style={{ width: '10%' }}>Tipo</th>
-                  <th style={{ width: '16%' }}>Risco</th>
-                  <th style={{ width: '20%' }}>Motivo</th>
-                  <th style={{ width: '12%' }}>Carimbo</th>
+                  <th style={{ width: '19%' }}>Identificador</th>
+                  <th style={{ width: '7%' }}>Estado</th>
+                  <th style={{ width: '13%' }}>Valor</th>
+                  <th style={{ width: '8%' }}>Tipo</th>
+                  <th style={{ width: '15%' }}>Risco</th>
+                  <th style={{ width: '18%' }}>Motivo</th>
+                  <th style={{ width: '11%' }}>Carimbo</th>
+                  <th style={{ width: '9%' }} className="th-acao">
+                    Análise
+                    {pendentesNaPagina > 0 && <b>{pendentesNaPagina} na fila</b>}
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {transactions.map((tx, i) => (
-                  <tr key={tx.id} style={{ animationDelay: `${Math.min(i, 12) * 22}ms` }}>
-                    <td className="cell-id">{tx.id}</td>
-                    <td>
-                      <State status={tx.status} />
-                    </td>
-                    <td className="cell-value">
-                      {tx.moeda === 'BRL' || !tx.moeda ? 'R$' : tx.moeda}{' '}
-                      {tx.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="cell-type">{tx.tipo}</td>
-                    <td>
-                      <Risk score={tx.riskScore} />
-                    </td>
-                    <td className="cell-reason">{tx.motivo || '——'}</td>
-                    <td className="cell-date">
-                      {new Date(tx.timestamp).toLocaleString('pt-BR', {
-                        day: '2-digit',
-                        month: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </td>
-                  </tr>
-                ))}
+                {transactions.map((tx, i) => {
+                  const pendente = PENDENTES.has(chaveStatus(tx.status));
+                  const fase = fases[tx.id] ?? 'parado';
+                  const veredito = resolvidas[tx.id];
+
+                  return (
+                    <tr
+                      key={tx.id}
+                      className={veredito ? `resolvida resolvida--${veredito}` : undefined}
+                      style={{ animationDelay: `${Math.min(i, 12) * 22}ms` }}
+                    >
+                      <td className="cell-id">{tx.id}</td>
+                      <td>
+                        <State status={tx.status} />
+                      </td>
+                      <td className="cell-value">
+                        {tx.moeda === 'BRL' || !tx.moeda ? 'R$' : tx.moeda}{' '}
+                        {tx.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="cell-type">{tx.tipo}</td>
+                      <td>
+                        <Risk score={tx.riskScore} />
+                      </td>
+                      <td className="cell-reason">{tx.motivo || '——'}</td>
+                      <td className="cell-date">
+                        {new Date(tx.timestamp).toLocaleString('pt-BR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </td>
+                      <td className="cell-acao">
+                        {pendente ? (
+                          <button
+                            className={`puncao${fase === 'rodando' ? ' puncao--rodando' : ''}${
+                              fase === 'erro' ? ' puncao--erro' : ''
+                            }`}
+                            onClick={() => avaliar(tx.id)}
+                            disabled={fase === 'rodando'}
+                            title={
+                              erros[tx.id] ??
+                              'Submeter ao modelo — a decisão é dele, não sua'
+                            }
+                          >
+                            <span className="puncao-txt">
+                              {fase === 'rodando' ? 'avaliando' : fase === 'erro' ? 'repetir' : 'avaliar'}
+                            </span>
+                            <span className="puncao-fio" />
+                          </button>
+                        ) : veredito ? (
+                          <span className={`veredito veredito--${veredito}`}>
+                            {veredito === 'bloqueada' ? 'bloqueada pelo modelo' : 'liberada pelo modelo'}
+                          </span>
+                        ) : (
+                          <span className="cell-vazio">——</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

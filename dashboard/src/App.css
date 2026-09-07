@@ -1,7 +1,10 @@
 /* ══════════════════════════════════════════════════════════════════════
    VERO — COMPOSIÇÃO
    Coluna-trilho fixa à esquerda · folha editorial à direita ·
-   uma faixa de telemetria invertida atravessando a folha de ponta a ponta.
+   duas faixas de telemetria invertidas atravessando a folha de ponta a
+   ponta, com a seção de composição impressa em papel entre elas.
+
+   Ritmo da página:  papel · faixa · papel · faixa · papel
    ══════════════════════════════════════════════════════════════════════ */
 
 .frame {
@@ -67,15 +70,39 @@
   writing-mode: vertical-rl;
   transform: rotate(180deg);
   font-family: var(--display);
-  font-variation-settings: 'wdth' 118, 'wght' 800;
+  font-weight: 800;
   font-size: 16px;
-  letter-spacing: .42em;
+  letter-spacing: .4em;
   text-transform: uppercase;
   color: var(--ink);
   margin-top: 4px;
 }
 
 .rail-spacer { flex: 1; }
+
+/* Disponibilidade impressa na lombada — dois dígitos, peso alto. */
+.rail-saude {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 19px;
+  letter-spacing: -.04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-25);
+  transition: color var(--t2) var(--e-out);
+}
+.rail-saude::after {
+  content: '%';
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 500;
+  vertical-align: super;
+  margin-left: 1px;
+  letter-spacing: 0;
+}
+.rail-saude--nominal   { color: var(--verde); }
+.rail-saude--lento     { color: var(--amber); }
+.rail-saude--degradado { color: var(--amber); }
+.rail-saude--critico   { color: var(--signal); }
 
 .rail-seg {
   width: 1px;
@@ -107,6 +134,7 @@
   height: 7px;
   background: var(--signal);
   transition: background var(--t2) var(--e-out);
+  flex-shrink: 0;
 }
 .led--on { background: var(--verde); animation: led 2.4s var(--e-out) infinite; }
 
@@ -120,6 +148,33 @@
 }
 .invert:hover { transform: rotate(180deg); }
 .invert:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   CONTADOR MECÂNICO
+   Janela de altura fixa; a coluna de dígitos desliza atrás dela. Só as
+   colunas que mudaram se movem, com 28ms de defasagem entre elas.
+   ══════════════════════════════════════════════════════════════════════ */
+
+.od { display: inline-flex; align-items: flex-start; font-variant-numeric: tabular-nums; }
+
+.od-col,
+.od-fixed {
+  display: block;
+  height: 1.06em;
+  line-height: 1.06;
+}
+/* Prefixos e sufixos carregam o próprio espaço ("R$ ", " p.p."). */
+.od-fixed { white-space: pre; }
+.od-col { overflow: hidden; }
+
+.od-strip {
+  display: flex;
+  flex-direction: column;
+  transition-property: transform;
+  transition-timing-function: var(--e-mech);
+  will-change: transform;
+}
+.od-strip > span { display: block; height: 1.06em; line-height: 1.06; }
 
 /* ══════════════════════════════════════════════════════════════════════
    FOLHA
@@ -165,9 +220,9 @@
 
 .masthead-title {
   font-family: var(--display);
-  font-variation-settings: 'wdth' 92, 'wght' 600;
+  font-weight: 600;
   font-size: 17px;
-  letter-spacing: .02em;
+  letter-spacing: .04em;
   text-transform: uppercase;
   color: var(--ink);
 }
@@ -175,7 +230,8 @@
 .masthead-sub {
   font-family: var(--serif);
   font-style: italic;
-  font-size: 17px;
+  font-weight: 300;
+  font-size: 18px;
   color: var(--ink-45);
   margin-left: 10px;
   text-transform: none;
@@ -233,9 +289,7 @@
 
 /* ── Número monumental ── */
 
-.hero {
-  padding: 10px 40px 44px 0;
-}
+.hero { padding: 10px 40px 40px 0; }
 
 .hero-figure {
   display: flex;
@@ -245,11 +299,11 @@
 
 .hero-num {
   font-family: var(--display);
-  font-variation-settings: 'wdth' 118, 'wght' 800;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
-  font-size: clamp(84px, 12.5vw, 208px);
-  line-height: .8;
-  letter-spacing: -.055em;
+  font-size: clamp(86px, 12.8vw, 214px);
+  line-height: 1;
+  letter-spacing: -.05em;
   color: var(--ink);
   display: block;
 }
@@ -267,9 +321,20 @@
 .hero-underline {
   height: 3px;
   background: var(--ink);
-  margin: 22px 0 16px;
+  margin: 20px 0 16px;
   transform-origin: left center;
 }
+
+.hero-par {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 26px;
+}
+
+/* A coluna divide espaço com a leitura de interceptação — um ponto
+   menor evita quatro linhas de dois palavrões cada. */
+.hero-note { font-size: 17.5px; }
 
 .hero-note b {
   font-family: var(--mono);
@@ -278,6 +343,44 @@
   font-size: 16px;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
+}
+
+/* Leitura de interceptação: segunda âncora tipográfica da seção. */
+.hero-marca {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding-left: 22px;
+  border-left: 1px solid var(--rule);
+  white-space: nowrap;
+}
+
+.hero-marca-num {
+  font-family: var(--display);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  font-size: 46px;
+  line-height: 1;
+  letter-spacing: -.045em;
+  color: var(--signal);
+}
+
+.hero-marca-lbl {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink-45);
+  padding-top: 5px;
+}
+.hero-marca-lbl em {
+  display: block;
+  font-style: normal;
+  font-size: 10.5px;
+  letter-spacing: .1em;
+  color: var(--ink-25);
+  margin-top: 3px;
 }
 
 /* ── Pilha de leituras secundárias ── */
@@ -326,11 +429,11 @@
 
 .readout-val {
   font-family: var(--display);
-  font-variation-settings: 'wdth' 108, 'wght' 700;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
-  font-size: 34px;
+  font-size: 36px;
   line-height: 1;
-  letter-spacing: -.03em;
+  letter-spacing: -.04em;
   color: var(--ink);
   grid-row: span 2;
   align-self: center;
@@ -395,9 +498,10 @@
 }
 .ratio-key b {
   display: block;
-  font-size: 15px;
-  font-weight: 500;
-  letter-spacing: .02em;
+  font-family: var(--display);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -.03em;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
@@ -430,7 +534,7 @@
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   02 / 03 — FAIXA DE TELEMETRIA (zona invertida, sangria total)
+   FAIXAS DE TELEMETRIA (zona invertida, sangria total)
    ══════════════════════════════════════════════════════════════════════ */
 
 /* A troca papel/tinta é um estalo de relé, não um crossfade: sem transição
@@ -439,6 +543,30 @@
   margin: 0 calc(var(--gutter) * -1);
   background: var(--zone);
   color: var(--zone-fg);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Varredura de sincronia: um fio atravessa a faixa uma vez, quando os
+   dados chegam. É o único movimento não solicitado da página, e dura
+   menos de um segundo — serve de recibo, não de enfeite. */
+.band-sweep {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 2;
+}
+.band-sweep::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -24%;
+  height: 24%;
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--zone-fg) 10%, transparent));
+  border-bottom: 1px solid var(--zone-fg);
+  animation: sweep-drop 700ms var(--e-mech) both;
 }
 
 .band-grid {
@@ -459,6 +587,10 @@
   gap: 20px;
   padding-bottom: 14px;
   flex-wrap: wrap;
+}
+.band-head--solo {
+  padding: 20px var(--gutter) 12px;
+  border-bottom: 1px solid var(--zone-rule);
 }
 
 .band-head .name {
@@ -491,7 +623,7 @@
   display: block;
 }
 
-/* ── Gráfico ── */
+/* ── Gráfico de fluxo ── */
 
 .chart { position: relative; user-select: none; padding-top: 24px; }
 .chart svg { display: block; width: 100%; }
@@ -619,7 +751,715 @@
 .feed-msg b { color: var(--zone-fg); font-weight: 500; }
 
 /* ══════════════════════════════════════════════════════════════════════
-   04 — REGISTRO
+   04 — COMPOSIÇÃO (impressa em papel, entre as duas faixas)
+   ══════════════════════════════════════════════════════════════════════ */
+
+.comp { border-bottom: 1px solid var(--rule-hard); }
+
+.comp-topo {
+  display: grid;
+  grid-template-columns: minmax(0, 41fr) minmax(0, 59fr);
+}
+
+.comp-painel { padding: 22px 0 28px; min-width: 0; }
+.comp-painel--anel { padding-right: 32px; }
+.comp-painel--dist {
+  border-left: 1px solid var(--rule);
+  padding-left: 32px;
+}
+.comp-painel--matriz {
+  border-top: 1px solid var(--rule);
+  padding-bottom: 32px;
+}
+
+.comp-rot {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-bottom: 16px;
+}
+.comp-rot .name {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--ink-45);
+}
+.comp-rot-nota {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-25);
+  margin-left: auto;
+}
+
+.comp-nota { margin-top: 16px; font-size: 17px; }
+
+.painel-vazio {
+  padding: 46px 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--ink-25);
+}
+.painel-vazio--zona { color: var(--zone-deep); }
+
+/* ── Rosca: mostrador de instrumento ── */
+
+.donut { display: block; }
+
+.donut-anel {
+  position: relative;
+  width: 100%;
+  max-width: 268px;
+  margin: 0 auto;
+}
+
+.donut-svg { display: block; width: 100%; height: auto; overflow: visible; }
+
+.donut-escala line {
+  stroke: var(--ink);
+  animation: lift 240ms var(--e-out) both;
+}
+
+.donut-trilho { stroke: var(--paper-deep); }
+
+.donut-setor {
+  stroke-dasharray: 100;
+  stroke-linecap: butt;
+  cursor: pointer;
+  animation: stroke-draw 520ms var(--e-mech) both;
+  --len: 100;
+  transition: transform var(--t1) var(--e-mech), opacity var(--t1) var(--e-out);
+}
+
+.donut-agulha {
+  stroke: var(--ink);
+  stroke-width: 1;
+  animation: lift 160ms var(--e-out) both;
+}
+
+.donut-centro {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  text-align: center;
+}
+
+.donut-centro-num {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 44px;
+  line-height: 1;
+  letter-spacing: -.05em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.donut-centro-lbl {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--ink-45);
+  margin-top: 8px;
+}
+
+.donut-centro-abs {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: var(--ink-25);
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.donut-chaves {
+  margin-top: 22px;
+  border-top: 1px solid var(--rule);
+}
+
+.donut-chave {
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr) 56px 54px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 2px;
+  border-bottom: 1px solid var(--rule-soft);
+  text-align: left;
+  animation: lift var(--t3) var(--e-out) both;
+  animation-delay: calc(var(--i, 0) * 60ms);
+  transition: background var(--t1) var(--e-out);
+}
+.donut-chave:hover,
+.donut-chave.on { background: var(--paper-sunk); }
+
+.donut-chave i { width: 9px; height: 9px; display: block; }
+
+.donut-chave-lbl {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-70);
+}
+
+.donut-chave-pct {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: -.03em;
+  color: var(--ink);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.donut-chave-abs {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-25);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Leituras derivadas sob o anel ── */
+
+.derivadas {
+  margin-top: 24px;
+  border-top: 1px solid var(--rule-hard);
+}
+
+.derivada {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.derivada:last-child { border-bottom: none; }
+
+.derivada span {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-45);
+}
+
+.derivada b {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: -.035em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ── Distribuição de risco ── */
+
+.hist { position: relative; user-select: none; padding-top: 22px; }
+.hist svg { display: block; width: 100%; }
+
+.hist-grid { stroke: var(--rule-soft); }
+.hist-base { stroke: var(--rule-hard); }
+
+.hist-bar {
+  transform-origin: bottom center;
+  transform-box: fill-box;
+  animation: grow-y 380ms var(--e-mech) both;
+  transition: opacity var(--t1) var(--e-out);
+}
+
+.hist-ac {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.4;
+  stroke-dasharray: 100;
+  animation: stroke-draw 900ms var(--e-out) 420ms both;
+  --len: 100;
+}
+
+.hist-corte line { stroke-dasharray: 3 3; }
+.hist-corte text {
+  font-family: var(--mono);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.hist-corte--amber  line { stroke: var(--amber); }
+.hist-corte--amber  text { fill: var(--amber); }
+.hist-corte--signal line { stroke: var(--signal); }
+.hist-corte--signal text { fill: var(--signal); }
+
+.hist-tick {
+  font-family: var(--mono);
+  letter-spacing: .06em;
+  fill: var(--ink-25);
+}
+
+.hist-readout {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-45);
+  pointer-events: none;
+}
+.hist-readout > * + * {
+  border-left: 1px solid var(--rule);
+  margin-left: 12px;
+  padding-left: 12px;
+}
+.hist-readout b { font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* ── Matriz tipo × risco ── */
+
+.matriz { padding-top: 4px; }
+
+.matriz-grade {
+  display: grid;
+  border-top: 1px solid var(--rule-hard);
+}
+
+.matriz-canto,
+.matriz-col,
+.matriz-lin,
+.matriz-soma,
+.matriz-cel {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.matriz-canto,
+.matriz-col {
+  padding: 9px 8px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-45);
+  border-bottom: 1px solid var(--rule);
+  justify-content: center;
+  transition: color var(--t1) var(--e-out);
+}
+.matriz-canto { justify-content: flex-start; color: var(--ink-25); font-size: 11px; }
+.matriz-col.on { color: var(--ink); }
+.matriz-col--soma { color: var(--ink-25); }
+
+.matriz-lin {
+  padding: 0 8px 0 2px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-45);
+  border-bottom: 1px solid var(--rule-soft);
+  transition: color var(--t1) var(--e-out);
+}
+.matriz-lin.on { color: var(--ink); }
+.matriz-lin--soma { color: var(--ink-25); border-bottom: none; }
+
+.matriz-cel {
+  position: relative;
+  isolation: isolate;          /* prende o ::before em z-index -1 aqui dentro */
+  justify-content: center;
+  height: 40px;
+  border-bottom: 1px solid var(--rule-soft);
+  border-left: 1px solid var(--rule-soft);
+  color: var(--ink-70);
+  font-weight: 500;
+  animation: cell-open 360ms var(--e-mech) both;
+}
+
+/* A intensidade é tinta sólida, não um degradê colorido. */
+.matriz-cel::before {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  z-index: -1;
+  background: var(--ink);
+  opacity: calc(var(--v, 0) * .88);
+  transition: opacity var(--t2) var(--e-out);
+}
+.matriz-cel--amber::before  { background: var(--amber); }
+.matriz-cel--signal::before { background: var(--signal); }
+
+/* Célula densa: a tinta cobre o campo, então o algarismo vira papel. */
+.matriz-cel--densa { color: var(--paper); }
+
+/* Régua de leitura: acende a linha e a coluna sob o cursor. */
+.matriz-cel.regua { box-shadow: inset 0 0 0 1px var(--rule-hard); }
+
+.matriz-soma {
+  justify-content: flex-end;
+  padding: 0 2px 0 8px;
+  color: var(--ink-45);
+  border-bottom: 1px solid var(--rule-soft);
+  transition: color var(--t1) var(--e-out);
+}
+.matriz-soma.on { color: var(--ink); }
+.matriz-soma--total {
+  color: var(--ink);
+  font-weight: 600;
+  border-bottom: none;
+}
+
+.matriz-escala {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-25);
+}
+.matriz-escala i {
+  width: 22px;
+  height: 9px;
+  display: block;
+  background: var(--ink);
+  opacity: calc(var(--v, 0) * .88);
+}
+.matriz-escala span:first-child { margin-right: 4px; }
+.matriz-escala span:last-child  { margin-left: 4px; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   05 — OBSERVABILIDADE (segunda faixa invertida)
+   ══════════════════════════════════════════════════════════════════════ */
+
+.obs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 0 var(--gutter) 26px;
+}
+
+.obs-cel {
+  padding: 20px 24px 20px 0;
+  min-width: 0;
+  border-bottom: 1px solid var(--zone-rule);
+}
+.obs-cel + .obs-cel {
+  border-left: 1px solid var(--zone-rule);
+  padding-left: 24px;
+}
+
+.obs-cel--fita  { grid-column: span 2; }
+.obs-cel--lat   { grid-column: span 2; border-bottom: none; }
+.obs-cel--rotas { grid-column: span 2; border-bottom: none; }
+
+/* A quarta célula da primeira linha abre a segunda: reinicia a borda. */
+.obs-cel--lat { border-left: none; padding-left: 0; }
+
+.obs-rot {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--zone-dim);
+  padding-bottom: 14px;
+}
+
+.obs-rot-nota {
+  font-style: normal;
+  font-size: 11px;
+  letter-spacing: .1em;
+  color: var(--zone-deep);
+  text-transform: none;
+}
+
+.obs-estado {
+  font-style: normal;
+  font-size: 11px;
+  letter-spacing: .16em;
+  padding: 2px 7px;
+  border: 1px solid currentColor;
+}
+.obs-estado--nominal   { color: var(--zone-verde); }
+.obs-estado--lento     { color: var(--zone-amber); }
+.obs-estado--degradado { color: var(--zone-amber); }
+.obs-estado--critico   { color: var(--zone-signal); animation: led 1.6s var(--e-out) infinite; }
+
+.obs-num {
+  font-family: var(--display);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.045em;
+  line-height: 1;
+  color: var(--zone-fg);
+}
+.obs-num--grande { font-size: clamp(48px, 5.4vw, 76px); }
+
+.obs-sub {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--zone-deep);
+}
+.obs-sub > * + * {
+  border-left: 1px solid var(--zone-rule);
+  margin-left: 12px;
+  padding-left: 12px;
+}
+.obs-sub .ruim { color: var(--zone-signal); }
+
+/* ── Fita de disponibilidade ── */
+
+.fita {
+  display: flex;
+  gap: 2px;
+  margin-top: 18px;
+  height: 30px;
+}
+
+.fita-slot {
+  flex: 1;
+  display: block;
+  animation: cell-open 260ms var(--e-mech) both;
+  transition: background var(--t1) var(--e-out);
+}
+.fita-slot--ok     { background: var(--zone-verde); }
+.fita-slot--lento  { background: var(--zone-amber); }
+.fita-slot--falha  { background: var(--zone-signal); }
+.fita-slot--vazio  { background: var(--zone-rule); }
+
+/* ── Manômetro ── */
+
+.gauge { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.gauge svg { display: block; overflow: visible; }
+
+.gauge-trilho   { stroke: var(--zone-rule); }
+.gauge-zona     { stroke: var(--zone-signal); opacity: .3; }
+.gauge-percurso {
+  stroke: var(--zone-fg);
+  stroke-dasharray: 100;
+  animation: stroke-draw 620ms var(--e-mech) 120ms both;
+  --len: 100;
+  transition: d var(--t3) var(--e-mech);
+}
+.gauge-escala line { stroke: var(--zone-dim); }
+
+.gauge-ponteiro line   { stroke: var(--zone-fg); }
+.gauge-ponteiro circle { fill: var(--zone-fg); }
+.gauge-ponteiro {
+  transition: transform var(--t4) var(--e-mech);
+}
+
+.gauge--amber  .gauge-percurso { stroke: var(--zone-amber); }
+.gauge--signal .gauge-percurso { stroke: var(--zone-signal); }
+.gauge--verde  .gauge-percurso { stroke: var(--zone-verde); }
+
+.gauge-leitura { text-align: center; margin-top: -14px; }
+.gauge-leitura b {
+  display: block;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 30px;
+  letter-spacing: -.04em;
+  line-height: 1;
+  color: var(--zone-fg);
+  font-variant-numeric: tabular-nums;
+}
+.gauge-leitura span {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--zone-deep);
+  margin-top: 6px;
+}
+
+/* ── Pulso ── */
+
+.pulso-linha {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--zone-rule);
+}
+.pulso-linha:last-of-type { border-bottom: none; }
+
+.pulso-num {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 38px;
+  line-height: 1;
+  letter-spacing: -.045em;
+  color: var(--zone-fg);
+  font-variant-numeric: tabular-nums;
+}
+.pulso-num--menor { font-size: 26px; }
+.pulso-mudo { color: var(--zone-deep); letter-spacing: -.02em; }
+.pulso-num span {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 400;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--zone-deep);
+}
+
+/* ── Percentis de latência ── */
+
+.percentis {
+  display: grid;
+  grid-template-columns: repeat(3, auto) minmax(0, 1fr);
+  align-items: end;
+  gap: 28px;
+}
+
+.percentil { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+
+.percentil-k {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--zone-deep);
+}
+
+.percentil-v {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 46px;
+  line-height: 1;
+  letter-spacing: -.05em;
+  color: var(--zone-fg);
+  font-variant-numeric: tabular-nums;
+}
+.percentil-v em {
+  font-family: var(--mono);
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: .1em;
+  color: var(--zone-deep);
+}
+
+.percentil--traco { align-items: flex-start; gap: 6px; }
+
+/* ── Traço fino ── */
+
+.spark { display: block; overflow: visible; }
+.spark--vazio { border-bottom: 1px solid var(--zone-rule); }
+.spark-base { stroke: var(--zone-rule); }
+.spark-linha {
+  fill: none;
+  stroke-width: 1.25;
+  stroke-dasharray: 100;
+  animation: stroke-draw 700ms var(--e-out) both;
+  --len: 100;
+}
+.spark-pico { animation: lift 300ms var(--e-out) 620ms both; }
+
+/* ── Rotas ── */
+
+.rotas { display: flex; flex-direction: column; }
+
+.rota {
+  display: grid;
+  grid-template-columns: 96px minmax(60px, 1fr) 66px 46px 74px;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--zone-rule);
+  font-family: var(--mono);
+  font-size: 12px;
+  animation: wipe-right var(--t2) var(--e-mech) both;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
+.rota:last-child { border-bottom: none; }
+
+.rota-nome {
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--zone-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rota-barra {
+  display: block;
+  height: 7px;
+  background: var(--zone-rule);
+}
+.rota-barra i {
+  display: block;
+  height: 100%;
+  background: var(--zone-fg);
+  transform-origin: left center;
+  animation: grow-x 480ms var(--e-mech) both;
+  transition: width var(--t2) var(--e-out);
+}
+
+.rota-ms {
+  text-align: right;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: -.03em;
+  color: var(--zone-fg);
+  font-variant-numeric: tabular-nums;
+}
+.rota-ms em {
+  font-family: var(--mono);
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: .1em;
+  color: var(--zone-deep);
+  margin-left: 3px;
+}
+
+.rota-n { text-align: right; color: var(--zone-deep); font-variant-numeric: tabular-nums; }
+
+.rota-falhas {
+  text-align: right;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  font-size: 11px;
+  color: var(--zone-deep);
+}
+.rota-falhas.ruim { color: var(--zone-signal); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   06 — REGISTRO
    ══════════════════════════════════════════════════════════════════════ */
 
 .log-head {
@@ -634,14 +1474,19 @@
 
 .log-title {
   font-family: var(--display);
-  font-variation-settings: 'wdth' 116, 'wght' 800;
-  font-size: 40px;
-  letter-spacing: -.035em;
+  font-weight: 800;
+  font-size: 44px;
+  letter-spacing: -.045em;
   line-height: .9;
   text-transform: uppercase;
   color: var(--ink);
 }
-.log-title span {
+.log-idx {
+  vertical-align: super;
+  margin-right: 10px;
+  letter-spacing: .1em;
+}
+.log-title > span:not(.log-idx) {
   font-family: var(--mono);
   font-size: 13px;
   font-weight: 400;
@@ -649,6 +1494,7 @@
   color: var(--ink-45);
   vertical-align: super;
   margin-left: 10px;
+  text-transform: none;
   font-variant-numeric: tabular-nums;
 }
 
@@ -835,6 +1681,16 @@ tbody tr:hover td:first-child { box-shadow: inset 3px 0 0 var(--signal); }
    RESPONSIVO
    ══════════════════════════════════════════════════════════════════════ */
 
+@media (max-width: 1360px) {
+  .obs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .obs-cel--fita  { grid-column: span 2; }
+  .obs-cel--lat   { grid-column: span 2; border-bottom: 1px solid var(--zone-rule); }
+  .obs-cel--rotas { grid-column: span 2; border-bottom: none; }
+  .obs-cel--gauge { border-left: none; padding-left: 0; }
+  .obs-cel--pulso { border-left: 1px solid var(--zone-rule); padding-left: 24px; }
+  .percentis { gap: 20px; }
+}
+
 @media (max-width: 1180px) {
   .situation { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .ratio {
@@ -848,6 +1704,25 @@ tbody tr:hover td:first-child { box-shadow: inset 3px 0 0 var(--signal); }
     border-top: 1px solid var(--zone-rule);
     padding-left: var(--gutter);
   }
+
+  .comp-topo { grid-template-columns: minmax(0, 1fr); }
+  .comp-painel--anel { padding-right: 0; }
+  .comp-painel--dist {
+    border-left: none;
+    border-top: 1px solid var(--rule);
+    padding-left: 0;
+  }
+
+  .hero-par { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .hero-marca { padding-left: 0; border-left: none; border-top: 1px solid var(--rule); padding-top: 14px; }
+}
+
+@media (max-width: 860px) {
+  .percentis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .percentil--traco { grid-column: span 3; }
+  .percentil-v { font-size: 34px; }
+  .rota { grid-template-columns: 84px minmax(40px, 1fr) 60px 62px; }
+  .rota-n { display: none; }
 }
 
 @media (max-width: 780px) {
@@ -874,6 +1749,274 @@ tbody tr:hover td:first-child { box-shadow: inset 3px 0 0 var(--signal); }
   .stack { border-left: none; border-top: 1px solid var(--rule); }
   .ratio { grid-column: auto; }
   .hero { padding-right: 0; padding-bottom: 30px; }
-  .log-title { font-size: 30px; }
+  .log-title { font-size: 32px; }
   .filters { flex-wrap: wrap; }
+
+  .obs { grid-template-columns: minmax(0, 1fr); }
+  .obs-cel,
+  .obs-cel + .obs-cel {
+    grid-column: auto !important;
+    border-left: none;
+    padding-left: 0;
+    padding-right: 0;
+    border-bottom: 1px solid var(--zone-rule);
+  }
+  .obs-cel:last-child { border-bottom: none; }
+  .matriz-grade { font-size: 11px; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   04.b·ii — CURVA DE OPERAÇÃO
+   Simulador de limiar. Divide o eixo horizontal com a distribuição logo
+   acima: as duas peças respondem à mesma pergunta, então têm de estar
+   alinhadas para o olho traçar a vertical sozinho.
+   ══════════════════════════════════════════════════════════════════════ */
+
+.comp-curva {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--rule);
+}
+
+.curva { user-select: none; }
+
+.curva-topo {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 22px;
+  flex-wrap: wrap;
+  padding-bottom: 14px;
+}
+
+.curva-rot { display: flex; align-items: baseline; gap: 10px; }
+.curva-rot .name {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--ink-45);
+}
+
+.curva-leituras { display: flex; gap: 22px; }
+.curva-leitura { display: flex; flex-direction: column; gap: 5px; }
+
+.curva-k {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--ink-25);
+}
+
+.curva-v {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 26px;
+  line-height: 1;
+  letter-spacing: -.04em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.curva-v--corte { color: var(--signal); }
+.curva-v em {
+  font-family: var(--mono);
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: .08em;
+  color: var(--ink-25);
+}
+
+/* `touch-action: none` é obrigatório: sem isso o navegador rola a página
+   em vez de deixar o ponteiro arrastar o corte no toque. */
+.curva-svg {
+  display: block;
+  width: 100%;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.curva-svg:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.curva-svg--arrasto { cursor: grabbing; }
+
+.curva-grid { stroke: var(--rule-soft); }
+.curva-base { stroke: var(--rule-hard); }
+.curva-tick {
+  font-family: var(--mono);
+  letter-spacing: .06em;
+  fill: var(--ink-25);
+}
+
+/* O vão entre as duas curvas é o argumento: quanto da exposição está
+   concentrada em poucos lançamentos grandes. */
+/* A transparência mora em `fill-opacity`, não em `opacity`: a animação de
+   entrada anima `opacity` e sobrescreveria a declaração, entregando uma
+   mancha preta sólida no fim do movimento. */
+.curva-vao {
+  fill: var(--ink);
+  fill-opacity: .07;
+  animation: lift var(--t3) var(--e-out) 260ms both;
+}
+
+.curva-linha { fill: none; }
+.curva-linha--conta {
+  stroke: var(--ink);
+  stroke-width: 1.7;
+  stroke-dasharray: 100;
+  animation: stroke-draw 820ms var(--e-out) both;
+  --len: 100;
+}
+.curva-linha--valor {
+  stroke: var(--signal);
+  stroke-width: 1.3;
+  stroke-dasharray: 4 3;
+  animation: lift var(--t3) var(--e-out) 420ms both;
+}
+
+.curva-vigente line { stroke: var(--ink-25); stroke-dasharray: 2 3; }
+.curva-vigente text {
+  font-family: var(--mono);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  fill: var(--ink-25);
+}
+
+.curva-cursor line { stroke: var(--signal); stroke-width: 1.5; }
+.curva-cursor rect { fill: var(--ink); }
+.curva-cursor path { fill: var(--signal); }
+.curva-cursor-valor { fill: var(--signal) !important; }
+
+.curva-pe {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding-top: 10px;
+  border-top: 1px solid var(--rule-soft);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-45);
+}
+
+.curva-legenda { display: inline-flex; align-items: center; gap: 8px; }
+.curva-legenda i { width: 14px; height: 2px; display: block; margin-left: 8px; }
+.curva-legenda i:first-of-type { margin-left: 0; }
+.curva-amostra-conta { background: var(--ink); }
+.curva-amostra-valor {
+  background: repeating-linear-gradient(90deg, var(--signal) 0 4px, transparent 4px 7px);
+}
+
+.curva-delta b {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: -.02em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.curva-delta--nulo { color: var(--ink-25); }
+
+.curva-nota { margin-top: 14px; font-size: 16.5px; }
+
+/* Corte simulado projetado sobre a distribuição. */
+.hist-sim rect { fill: var(--ink); opacity: .06; }
+.hist-sim line { stroke: var(--ink); stroke-width: 1.5; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   FILA DE AVALIAÇÃO — punção do livro-caixa
+   O botão não decide: manda o modelo decidir. O rótulo diz isso.
+   ══════════════════════════════════════════════════════════════════════ */
+
+.th-acao { text-align: right; }
+.th-acao b {
+  display: block;
+  font-weight: 500;
+  font-size: 10px;
+  letter-spacing: .1em;
+  color: var(--signal);
+  margin-top: 3px;
+}
+
+.cell-acao { text-align: right; white-space: nowrap; }
+.cell-vazio { color: var(--ink-25); }
+
+.puncao {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 11px 6px;
+  border: 1px solid var(--rule-hard);
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink);
+  transition: background var(--t1) var(--e-out), color var(--t1) var(--e-out),
+              border-color var(--t1) var(--e-out);
+}
+.puncao:hover { background: var(--ink); color: var(--paper); }
+.puncao:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+.puncao--rodando {
+  color: var(--ink-45);
+  border-color: var(--rule);
+  background: none;
+  cursor: progress;
+}
+.puncao--rodando:hover { background: none; color: var(--ink-45); }
+
+.puncao--erro { border-color: var(--signal); color: var(--signal); }
+.puncao--erro:hover { background: var(--signal); color: var(--paper); }
+
+/* Fio de varredura: só existe enquanto a chamada está no ar. */
+.puncao-fio { display: none; }
+.puncao--rodando .puncao-fio {
+  display: block;
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 30%;
+  height: 2px;
+  background: var(--signal);
+  animation: scan-x 760ms var(--e-mech) infinite;
+}
+
+.veredito {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.veredito--bloqueada { color: var(--signal); }
+.veredito--aprovada  { color: var(--verde); }
+
+/* Linha resolvida nesta sessão fica marcada na margem, como um visto a
+   lápis no livro — o operador enxerga o que já passou pela mão dele. */
+tbody tr.resolvida td:first-child { box-shadow: inset 3px 0 0 var(--verde); }
+tbody tr.resolvida--bloqueada td:first-child { box-shadow: inset 3px 0 0 var(--signal); }
+
+tbody tr.resolvida td { position: relative; }
+tbody tr.resolvida td::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--ink);
+  pointer-events: none;
+  animation: stamp 900ms var(--e-out) both;
+}
+
+@media (max-width: 860px) {
+  .curva-leituras { gap: 16px; }
+  .curva-v { font-size: 21px; }
 }
