@@ -2020,3 +2020,209 @@ tbody tr.resolvida td::after {
   .curva-leituras { gap: 16px; }
   .curva-v { font-size: 21px; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   00 — MOTOR DE DECISÃO
+   O palco. Faixa invertida em sangria total, logo abaixo do cabeçalho: a
+   primeira coisa que se vê é a máquina rodando, não um número parado.
+   O canvas é transparente e o fundo vem daqui, então a inversão papel/tinta
+   continua sendo uma troca de tokens.
+   ══════════════════════════════════════════════════════════════════════ */
+
+.motor {
+  margin: 0 calc(var(--gutter) * -1);
+  background: var(--zone);
+  color: var(--zone-fg);
+  position: relative;
+}
+
+.motor-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 16px var(--gutter) 0;
+}
+.motor-head .name {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--zone-dim);
+}
+.motor-head .idx { color: var(--zone-signal); }
+
+/* A ressalva fica impressa na cena, não escondida na documentação. */
+.motor-ressalva { color: var(--zone-deep); text-transform: none; letter-spacing: .06em; }
+
+.motor-palco {
+  position: relative;
+  height: clamp(360px, 44vh, 560px);
+  overflow: hidden;
+}
+
+.motor-tela { display: block; width: 100%; height: 100%; }
+
+/* ── Rótulos de estágio: seguem a projeção dos nós, com fio de chamada ── */
+
+.motor-rotulos { position: absolute; inset: 0; pointer-events: none; }
+
+.motor-estagio {
+  position: absolute;
+  top: 0;
+  left: 0;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--zone-deep);
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--zone-rule);
+  will-change: transform;
+}
+
+/* ── Portões: contadores colados na coluna de decisão ── */
+
+.motor-portoes { position: absolute; inset: 0; pointer-events: none; }
+
+.motor-portao {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: auto;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 8px 4px;
+  border-left: 1px solid var(--zone-rule);
+  white-space: nowrap;
+  will-change: transform;
+  transition: border-color var(--t1) var(--e-out), background var(--t1) var(--e-out);
+}
+.motor-portao:hover { background: var(--zone-sunk); }
+.motor-portao:focus-visible { outline: 2px solid var(--zone-signal); outline-offset: 2px; }
+
+.motor-portao b {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 22px;
+  line-height: 1;
+  letter-spacing: -.04em;
+  font-variant-numeric: tabular-nums;
+}
+.motor-portao span {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--zone-deep);
+}
+
+.motor-portao--aprovada b         { color: var(--zone-verde); }
+.motor-portao--aprovada           { border-left-color: var(--zone-verde); }
+.motor-portao--suspeita b         { color: var(--zone-amber); }
+.motor-portao--suspeita           { border-left-color: var(--zone-amber); }
+.motor-portao--bloqueada b        { color: var(--zone-signal); }
+.motor-portao--bloqueada          { border-left-color: var(--zone-signal); }
+.motor-portao--aceitaprovisoria b { color: var(--zone-azul); }
+.motor-portao--aceitaprovisoria   { border-left-color: var(--zone-azul); }
+
+/* ── Leituras ── */
+
+.motor-hud {
+  position: absolute;
+  left: var(--gutter);
+  bottom: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  pointer-events: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--zone-deep);
+}
+.motor-hud > * + * {
+  border-left: 1px solid var(--zone-rule);
+  margin-left: 12px;
+  padding-left: 12px;
+}
+.motor-hud b {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: -.02em;
+  color: var(--zone-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.motor-ultima--aprovada b         { color: var(--zone-verde); }
+.motor-ultima--suspeita b         { color: var(--zone-amber); }
+.motor-ultima--bloqueada b        { color: var(--zone-signal); }
+.motor-ultima--aceitaprovisoria b { color: var(--zone-azul); }
+
+/* Sonda de nó: aparece sob o cursor, com o nome do estágio e quantas
+   transações já passaram por ele nesta sessão. */
+.motor-sonda {
+  position: absolute;
+  right: var(--gutter);
+  bottom: 16px;
+  text-align: right;
+  pointer-events: none;
+  animation: lift var(--t1) var(--e-out) both;
+}
+.motor-sonda b {
+  display: block;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--zone-fg);
+}
+.motor-sonda span {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .12em;
+  color: var(--zone-deep);
+  font-variant-numeric: tabular-nums;
+}
+
+.motor-sem-webgl {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--gutter);
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--zone-deep);
+}
+
+@media (max-width: 780px) {
+  .motor-palco { height: 300px; }
+  .motor-portao b { font-size: 17px; }
+  .motor-portao span { display: none; }
+  .motor-sonda { display: none; }
+}
+
+/* Enquanto o pedaço do three.js não chega, a faixa já reserva o lugar —
+   sem salto de layout quando a cena monta. */
+.motor-palco--espera {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--zone-deep);
+}
