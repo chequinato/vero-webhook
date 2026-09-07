@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as signalR from '@microsoft/signalr';
+import { IS_DEMO } from './api';
+import { demo } from './demo';
 import type { AlertItem, TransacaoDto } from './types';
 
 const HUB_URL = import.meta.env.VITE_API_URL
@@ -16,6 +18,16 @@ export function useSignalR(onNewTransaction: () => void) {
   }, []);
 
   useEffect(() => {
+    // ── Modo demonstração: fita sintética, sem hub ──
+    if (IS_DEMO) {
+      setConnected(true);
+      const t = setInterval(() => {
+        const tx = demo.evento();
+        addAlert(montaAlerta(tx));
+      }, 2600);
+      return () => clearInterval(t);
+    }
+
     const connection = new signalR.HubConnectionBuilder()
       .withUrl(HUB_URL)
       .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
@@ -25,20 +37,7 @@ export function useSignalR(onNewTransaction: () => void) {
     connectionRef.current = connection;
 
     connection.on('TransacaoRecebida', (tx: TransacaoDto) => {
-      const riskLevel = (tx.riskScore ?? 0) > 0.7 ? 'danger'
-        : (tx.riskScore ?? 0) > 0.4 ? 'warning' : 'success';
-
-      addAlert({
-        id: crypto.randomUUID(),
-        transacaoId: tx.id,
-        motivo: tx.status === 'bloqueada' ? tx.motivo ?? 'bloqueada' : tx.status,
-        type: tx.status === 'bloqueada' ? 'danger' : riskLevel,
-        message: tx.status === 'bloqueada'
-          ? `Transação ${tx.id} BLOQUEADA — ${tx.motivo}`
-          : `Transação ${tx.id} recebida — R$ ${tx.valor.toLocaleString('pt-BR')} (risk: ${((tx.riskScore ?? 0) * 100).toFixed(0)}%)`,
-        timestamp: new Date(),
-      });
-
+      addAlert(montaAlerta(tx));
       onNewTransaction();
     });
 
@@ -62,7 +61,7 @@ export function useSignalR(onNewTransaction: () => void) {
         transacaoId: data.id,
         motivo: data.motivo,
         type: 'danger',
-        message: `🚨 ALERTA: Anomalia em ${data.id} — ${data.motivo}`,
+        message: `ALERTA: anomalia em ${data.id} — ${data.motivo}`,
         timestamp: new Date(),
       });
     });
@@ -81,4 +80,21 @@ export function useSignalR(onNewTransaction: () => void) {
   }, [addAlert, onNewTransaction]);
 
   return { connected, alerts };
+}
+
+function montaAlerta(tx: TransacaoDto): AlertItem {
+  const risco = tx.riskScore ?? 0;
+  const nivel = risco > 0.7 ? 'danger' : risco > 0.4 ? 'warning' : 'success';
+
+  return {
+    id: crypto.randomUUID(),
+    transacaoId: tx.id,
+    // A etiqueta já diz o estado; aqui vai só o que ela não diz.
+    motivo: tx.motivo ?? `R$ ${tx.valor.toLocaleString('pt-BR')} · ${(risco * 100).toFixed(0)}%`,
+    type: tx.status === 'bloqueada' ? 'danger' : nivel,
+    message: tx.status === 'bloqueada'
+      ? `Transação ${tx.id} BLOQUEADA — ${tx.motivo}`
+      : `Transação ${tx.id} recebida — R$ ${tx.valor.toLocaleString('pt-BR')} (risco: ${(risco * 100).toFixed(0)}%)`,
+    timestamp: new Date(),
+  };
 }

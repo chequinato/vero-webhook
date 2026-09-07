@@ -1,134 +1,193 @@
-/* ═══════════════════════════════════════════════════════
-   VERO — Design System
-   Swiss Editorial × Spacecraft Telemetry × Industrial UI
-   ═══════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════════════
+   VERO — SISTEMA VISUAL
+   Papel suíço · painel de instrumentos · impressão técnica
+   Uma folha de papel com uma faixa de telemetria cravada no meio.
+   ══════════════════════════════════════════════════════════════════════ */
 
 :root {
-  /* ── Surfaces ── */
-  --bg-void: #08080c;
-  --bg-base: #0c0c12;
-  --bg-surface: #14141c;
-  --bg-elevated: #1c1c26;
-  --bg-hover: #242430;
+  /* ── Terra: papel ───────────────────────────────────────────────── */
+  --paper:        #E8E4D9;
+  --paper-sunk:   #DFDACC;
+  --paper-deep:   #D5CFBF;
 
-  /* ── Borders ── */
-  --border: #28283a;
-  --border-strong: #363648;
-  --border-accent: rgba(0, 223, 162, 0.25);
+  /* ── Tinta ──────────────────────────────────────────────────────── */
+  --ink:          #14120F;
+  --ink-70:       #423E37;
+  --ink-45:       #5E5A50;
+  --ink-25:       #837E73;
 
-  /* ── Text ── */
-  --text-primary: #f0f0f4;
-  --text-secondary: #a0a0ac;
-  --text-muted: #626270;
-  --text-ghost: #363640;
+  /* ── Fios ───────────────────────────────────────────────────────── */
+  --rule:         #C6C0B1;
+  --rule-soft:    #D6D1C3;
+  --rule-hard:    #14120F;
 
-  /* ── Accent ── */
-  --accent: #00dfa2;
-  --accent-dim: rgba(0, 223, 162, 0.08);
-  --accent-medium: rgba(0, 223, 162, 0.15);
+  /* ── Sinais: usados com parcimônia, nunca decorativos ───────────── */
+  --signal:       #CE2E0B;   /* bloqueio  */
+  --amber:        #9A6800;   /* suspeita  */
+  --verde:        #1F6146;   /* aprovada  */
+  --azul:         #2A4A87;   /* pendente  */
 
-  /* ── Semantic ── */
-  --danger: #ff4040;
-  --danger-dim: rgba(255, 64, 64, 0.08);
-  --warning: #dfa000;
-  --warning-dim: rgba(223, 160, 0, 0.08);
-  --success: #00dfa2;
-  --success-dim: rgba(0, 223, 162, 0.08);
-  --info: #4488cc;
+  /* ── Zona invertida (faixa de telemetria) ───────────────────────── */
+  --zone:         #14120F;
+  --zone-fg:      #E8E4D9;
+  --zone-dim:     #ADA79A;
+  --zone-deep:    #8E8878;
+  --zone-rule:    #302D27;
+  --zone-signal:  #FF4E24;
+  --zone-amber:   #DDA01A;
+  --zone-verde:   #3FB183;
+  --zone-azul:    #6F9FEA;
 
-  /* ── Typography ── */
-  --font-sans: 'Space Grotesk', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', monospace;
+  /* ── Tipografia ─────────────────────────────────────────────────── */
+  --display: 'Archivo', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --mono:    'IBM Plex Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+  --serif:   'Newsreader', Georgia, 'Times New Roman', serif;
 
-  /* ── Motion ── */
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
-  --duration-fast: 200ms;
-  --duration-normal: 350ms;
-  --duration-slow: 500ms;
+  /* ── Movimento ──────────────────────────────────────────────────── */
+  --e-out:  cubic-bezier(.16, .84, .24, 1);   /* saída suave, sem quique */
+  --e-mech: cubic-bezier(.72, 0, .18, 1);     /* mecânico, tipo relé     */
+  --t1: 200ms;
+  --t2: 320ms;
+  --t3: 480ms;
 
-  font-family: var(--font-sans);
+  --rail: 68px;
+  --gutter: 40px;
+
+  color-scheme: light;
+  font-family: var(--mono);
   font-size: 14px;
-  line-height: 1.5;
-  color-scheme: dark;
-  color: var(--text-primary);
-  background: var(--bg-base);
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--paper);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-synthesis: none;
 }
 
-*, *::before, *::after {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+/* ── Modo tinta: a folha vira negativo, a faixa vira papel ────────── */
+[data-mode="ink"] {
+  --paper:        #101010;
+  --paper-sunk:   #171716;
+  --paper-deep:   #1E1D1B;
+
+  --ink:          #EDE9DE;
+  --ink-70:       #C2BDB1;
+  --ink-45:       #9C978B;
+  --ink-25:       #726D64;
+
+  --rule:         #2C2B27;
+  --rule-soft:    #201F1C;
+  --rule-hard:    #EDE9DE;
+
+  --signal:       #FF4E24;
+  --amber:        #DDA01A;
+  --verde:        #3FB183;
+  --azul:         #6F9FEA;
+
+  --zone:         #EDE9DE;
+  --zone-fg:      #101010;
+  --zone-dim:     #46423B;
+  --zone-deep:    #5E5A51;
+  --zone-rule:    #C9C3B4;
+  --zone-signal:  #CE2E0B;
+  --zone-amber:   #9A6800;
+  --zone-verde:   #1F6146;
+  --zone-azul:    #2A4A87;
+
+  color-scheme: dark;
 }
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
   min-height: 100vh;
-  background: var(--bg-base);
+  background: var(--paper);
+  /* Papel milimetrado: quase invisível, dá textura sem virar enfeite. */
+  background-image: radial-gradient(var(--rule) .5px, transparent .6px);
+  background-size: 24px 24px;
+  transition: color var(--t1) var(--e-out);
 }
 
-#root {
-  min-height: 100vh;
-}
+#root { min-height: 100vh; }
 
-/* ── Scrollbar — Minimal ── */
-::-webkit-scrollbar { width: 4px; height: 4px; }
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+
+::selection { background: var(--ink); color: var(--paper); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border-strong); }
-::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+::-webkit-scrollbar-thumb { background: var(--rule); border: 3px solid var(--paper); }
+::-webkit-scrollbar-thumb:hover { background: var(--ink-45); }
 
-/* ── Selection ── */
-::selection {
-  background: var(--accent-medium);
-  color: var(--text-primary);
+/* ══════════════════════════════════════════════════════════════════════
+   TIPOS RECORRENTES
+   ══════════════════════════════════════════════════════════════════════ */
+
+.mono-label {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink-45);
 }
 
-/* ── Entry Animation ── */
-@keyframes enter {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
+.num {
+  font-family: var(--display);
+  font-variation-settings: 'wdth' 112, 'wght' 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
+  line-height: .9;
+  color: var(--ink);
+}
+
+.serif-note {
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 300;
+  font-size: 19px;
+  line-height: 1.45;
+  color: var(--ink-70);
+}
+
+.idx {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  color: var(--signal);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   MOVIMENTO
+   Entradas diferentes para dados diferentes: fios são traçados,
+   números são revelados por corte, listas entram por varredura lateral.
+   ══════════════════════════════════════════════════════════════════════ */
+
+@keyframes rule-draw   { from { transform: scaleX(0); }              to { transform: scaleX(1); } }
+@keyframes rule-drop   { from { transform: scaleY(0); }              to { transform: scaleY(1); } }
+@keyframes cut-up      { from { clip-path: inset(100% 0 0 0); transform: translateY(10px); }
+                         to   { clip-path: inset(0 0 0 0);    transform: translateY(0); } }
+@keyframes wipe-right  { from { clip-path: inset(0 100% 0 0); }      to { clip-path: inset(0 0 0 0); } }
+@keyframes lift        { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes led         { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+@keyframes stroke-draw { from { stroke-dashoffset: var(--len, 400); } to { stroke-dashoffset: 0; } }
+@keyframes grow-y      { from { transform: scaleY(0); }              to { transform: scaleY(1); } }
+@keyframes flash-mark  { from { opacity: .16; } to { opacity: 0; } }
+
+/* Escalonamento: cada elemento carrega o próprio índice em --i. */
+.rv        { animation: lift       var(--t3) var(--e-out) both;  animation-delay: calc(var(--i, 0) * 60ms); }
+.rv-cut    { animation: cut-up     var(--t3) var(--e-out) both;  animation-delay: calc(var(--i, 0) * 60ms); }
+.rv-wipe   { animation: wipe-right var(--t2) var(--e-mech) both; animation-delay: calc(var(--i, 0) * 60ms); }
+.rv-rule   { animation: rule-draw  var(--t3) var(--e-mech) both; animation-delay: calc(var(--i, 0) * 60ms);
+             transform-origin: left center; }
+.rv-vrule  { animation: rule-drop  var(--t3) var(--e-mech) both; animation-delay: calc(var(--i, 0) * 60ms);
+             transform-origin: top center; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes enterScale {
-  from {
-    opacity: 0;
-    transform: scale(0.97);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes scanline {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(100%); }
-}
-
-@keyframes pulse-subtle {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-@keyframes draw-line {
-  from { stroke-dashoffset: 1000; }
-  to { stroke-dashoffset: 0; }
-}
-
-.loading-skeleton {
-  background: linear-gradient(90deg, var(--bg-surface) 0%, var(--bg-elevated) 50%, var(--bg-surface) 100%);
-  background-size: 200% 100%;
-  animation: skeleton 1.8s var(--ease-in-out) infinite;
-}
-
-@keyframes skeleton {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
 }

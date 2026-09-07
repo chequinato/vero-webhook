@@ -1,29 +1,50 @@
 import { useState, useEffect, useCallback } from 'react';
-import { api } from './api';
+import { api, IS_DEMO } from './api';
 import { useSignalR } from './useSignalR';
 import { useClock } from './hooks/useClock';
-import { StatsCards } from './components/StatsCards';
+import { Mark } from './components/Mark';
+import { Situation } from './components/Situation';
 import { VolumeChart } from './components/VolumeChart';
-import { AlertFeed } from './components/AlertFeed';
-import { TransactionTable } from './components/TransactionTable';
+import { Feed } from './components/Feed';
+import { Ledger } from './components/Ledger';
 import type { Stats, VolumeHora, TransacaoDto } from './types';
 import './App.css';
 
+type Mode = 'paper' | 'ink';
+
+function useMode() {
+  const [mode, setMode] = useState<Mode>(
+    () => (document.documentElement.dataset.mode as Mode) || 'paper',
+  );
+
+  useEffect(() => {
+    document.documentElement.dataset.mode = mode;
+    try {
+      localStorage.setItem('vero.mode', mode);
+    } catch {
+      /* armazenamento bloqueado — a preferência vale só para esta sessão */
+    }
+  }, [mode]);
+
+  return [mode, () => setMode(m => (m === 'paper' ? 'ink' : 'paper'))] as const;
+}
+
 function App() {
-  // ─── State ───
   const [stats, setStats] = useState<Stats | null>(null);
   const [timeline, setTimeline] = useState<VolumeHora[]>([]);
   const [transactions, setTransactions] = useState<TransacaoDto[]>([]);
+  const [modelo, setModelo] = useState<{ algorithm: string; modelLoaded: boolean } | null>(null);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [filter, setFilter] = useState('');
   const [loading, setLoading] = useState(true);
+  const [sync, setSync] = useState<Date | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const clock = useClock();
+  const [, toggleMode] = useMode();
 
-  // ─── Data Fetching ───
   const fetchData = useCallback(async () => {
     try {
       const [statsData, timelineData, txData] = await Promise.all([
@@ -36,6 +57,7 @@ function App() {
       setTransactions(txData.items);
       setTotal(txData.total);
       setTotalPages(txData.totalPages);
+      setSync(new Date());
     } catch (err) {
       console.warn('API não disponível:', err);
     } finally {
@@ -48,131 +70,171 @@ function App() {
   }, [fetchData, refreshKey]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setRefreshKey(k => k + 1);
-    }, 10000);
-    return () => clearInterval(interval);
+    api.getMlMetrics().then(setModelo).catch(() => setModelo(null));
   }, []);
 
-  // ─── SignalR ───
-  const handleNewTransaction = useCallback(() => {
-    setRefreshKey(k => k + 1);
+  useEffect(() => {
+    const t = setInterval(() => setRefreshKey(k => k + 1), 10000);
+    return () => clearInterval(t);
   }, []);
 
+  const handleNewTransaction = useCallback(() => setRefreshKey(k => k + 1), []);
   const { connected, alerts } = useSignalR(handleNewTransaction);
 
-  // ─── Filter / Pagination ───
   const handleFilterChange = (f: string) => {
     setFilter(f);
     setPage(1);
   };
 
+  const hoje = new Date().toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+
   return (
-    <div className="app">
-      {/* ── Header ── */}
-      <header className="header">
-        <div className="header-left">
-          <div className="header-logo">
-            <svg className="header-logo-mark" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-              {/* Shield outline */}
-              <path d="M16 2L4 8V16C4 22.6 9.2 28.4 16 30C22.8 28.4 28 22.6 28 16V8L16 2Z" stroke="var(--accent)" strokeWidth="1.2" opacity="0.15" fill="none"/>
-              {/* V mark */}
-              <path d="M9 9L16 24L23 9" stroke="var(--accent)" strokeWidth="2.8" strokeLinecap="square" strokeLinejoin="miter"/>
-              {/* Scan line */}
-              <line x1="11.5" y1="15" x2="20.5" y2="15" stroke="var(--accent)" strokeWidth="1" opacity="0.4"/>
-              {/* Corner accents */}
-              <line x1="4" y1="8" x2="7" y2="8" stroke="var(--accent)" strokeWidth="0.8" opacity="0.25"/>
-              <line x1="25" y1="8" x2="28" y2="8" stroke="var(--accent)" strokeWidth="0.8" opacity="0.25"/>
-            </svg>
-            <span className="header-logo-text">VERO</span>
-          </div>
-          <div className="header-divider" />
-          <span className="header-subtitle">Fraud Detection System</span>
-        </div>
-        <div className="header-right">
-          <span className="header-clock">{clock}</span>
-          <div className="connection-status">
-            <span className={`connection-indicator ${connected ? 'connected' : ''}`} />
-            <span>{connected ? 'SYS ONLINE' : 'SYS OFFLINE'}</span>
-          </div>
-        </div>
-      </header>
+    <div className="frame">
+      {/* ══ TRILHO ══ */}
+      <aside className="rail">
+        <span className="rail-mark">
+          <Mark size={26} />
+        </span>
+        <span className="rail-word">Vero</span>
 
-      {/* ── Main ── */}
-      <main className="main">
-        {/* 01 — OVERVIEW */}
-        <div className="section stagger-1">
-          <div className="section-header">
-            <span className="section-number">01</span>
-            <span className="section-title">Overview</span>
+        <span className="rail-spacer" />
+
+        <span className="rail-seg rv-vrule" style={{ ['--i' as string]: 6 }} />
+
+        <span className="rail-state">
+          <span className={`led${connected ? ' led--on' : ''}`} />
+          <span className="rail-state-word">{connected ? 'enlace' : 'mudo'}</span>
+        </span>
+
+        <button
+          className="invert"
+          onClick={toggleMode}
+          title="Inverter papel e tinta"
+          aria-label="Inverter papel e tinta"
+        />
+      </aside>
+
+      {/* ══ FOLHA ══ */}
+      <div className="sheet">
+        <header className="masthead">
+          <h1 className="masthead-title rv" style={{ ['--i' as string]: 0 }}>
+            Boletim de integridade
+            <span className="masthead-sub">transacional</span>
+          </h1>
+          <div className="masthead-meta rv" style={{ ['--i' as string]: 1 }}>
+            <span>ed. {hoje}</span>
+            <span>
+              <b>{clock}</b>
+            </span>
+            <span>
+              enlace <b>{connected ? 'ativo' : 'caído'}</b>
+            </span>
           </div>
-          <StatsCards stats={stats} loading={loading} />
+        </header>
+
+        <div className="section-mark rv" style={{ ['--i' as string]: 1 }}>
+          <span className="idx">01</span>
+          <span className="name">Situação — janela de 24 horas</span>
         </div>
 
-        {/* 02 & 03 — VOLUME + FEED */}
-        <div className="section stagger-3">
-          <div className="charts-row">
-            <div className="chart-panel">
-              <div className="chart-panel-header">
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 4 }}>
-                    <span className="section-number">02</span>
-                    <span className="chart-panel-title">Volume 24h</span>
-                  </div>
-                </div>
-                <div className="chart-legend">
-                  <div className="chart-legend-item">
-                    <span className="chart-legend-dot" style={{ background: 'var(--accent)' }} />
-                    Normal
-                  </div>
-                  <div className="chart-legend-item">
-                    <span className="chart-legend-dot" style={{ background: 'var(--danger)' }} />
-                    Bloqueada
-                  </div>
-                  <div className="chart-legend-item">
-                    <span className="chart-legend-dot" style={{ background: 'var(--warning)' }} />
-                    Suspeita
-                  </div>
-                </div>
+        <Situation stats={stats} loading={loading} />
+
+        {/* ── fita de sistema ── */}
+        <div className="systembar rv" style={{ ['--i' as string]: 7 }}>
+          <span>
+            modelo <b>{modelo?.algorithm ?? 'indisponível'}</b>
+          </span>
+          <span>
+            estado <b>{modelo?.modelLoaded ? 'carregado' : 'não carregado'}</b>
+          </span>
+          <span>
+            varredura <b>10s</b>
+          </span>
+          <span>
+            eventos <b>{String(alerts.length).padStart(3, '0')}</b>
+          </span>
+          <span>
+            sincronia{' '}
+            <b>{sync ? sync.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '——'}</b>
+          </span>
+          {IS_DEMO && (
+            <span>
+              fonte <b>demonstração</b>
+            </span>
+          )}
+        </div>
+
+        {/* ══ FAIXA DE TELEMETRIA ══ */}
+        <section className="band rv" style={{ ['--i' as string]: 8 }}>
+          <div className="band-grid">
+            <div className="band-panel">
+              <div className="band-head">
+                <span>
+                  <span className="idx">02</span> <span className="name">Fluxo por hora</span>
+                </span>
+                <span className="band-legend">
+                  <span>
+                    <i style={{ background: 'var(--zone-fg)', opacity: 0.78 }} />
+                    normal
+                  </span>
+                  <span>
+                    <i style={{ background: 'var(--zone-amber)' }} />
+                    suspeita
+                  </span>
+                  <span>
+                    <i style={{ background: 'var(--zone-signal)' }} />
+                    bloqueio
+                  </span>
+                  <span>
+                    <i style={{ background: 'var(--zone-fg)', height: 1, width: 14 }} />
+                    taxa
+                  </span>
+                </span>
               </div>
               <VolumeChart data={timeline} />
             </div>
 
-            <div className="chart-panel">
-              <div className="chart-panel-header">
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-                  <span className="section-number">03</span>
-                  <span className="chart-panel-title">Live Feed</span>
-                </div>
-                <div className="connection-status" style={{ gap: 6 }}>
-                  <span
-                    className={`connection-indicator ${connected ? 'connected' : ''}`}
-                    style={{ width: 4, height: 4 }}
-                  />
-                </div>
+            <div className="band-panel">
+              <div className="band-head">
+                <span>
+                  <span className="idx">03</span> <span className="name">Feed ao vivo</span>
+                </span>
+                <span className="band-legend">
+                  <span>
+                    <i
+                      style={{
+                        background: connected ? 'var(--zone-verde)' : 'var(--zone-signal)',
+                      }}
+                    />
+                    {connected ? 'recebendo' : 'sem sinal'}
+                  </span>
+                </span>
               </div>
-              <AlertFeed alerts={alerts} />
+              <Feed alerts={alerts} />
             </div>
           </div>
-        </div>
+        </section>
 
-        {/* 04 — TRANSACTION LOG */}
-        <div className="section stagger-5">
-          <div className="section-header">
-            <span className="section-number">04</span>
-            <span className="section-title">Transaction Log</span>
-          </div>
-          <TransactionTable
-            transactions={transactions}
-            total={total}
-            page={page}
-            totalPages={totalPages}
-            filter={filter}
-            onFilterChange={handleFilterChange}
-            onPageChange={setPage}
-          />
-        </div>
-      </main>
+        <Ledger
+          transactions={transactions}
+          total={total}
+          page={page}
+          totalPages={totalPages}
+          filter={filter}
+          onFilterChange={handleFilterChange}
+          onPageChange={setPage}
+        />
+
+        <footer className="colophon">
+          <span>Vero — detecção híbrida de anomalias</span>
+          <span>Archivo · IBM Plex Mono · Newsreader</span>
+          <span>{connected ? 'transmissão ao vivo' : 'leitura estática'}</span>
+        </footer>
+      </div>
     </div>
   );
 }
