@@ -109,6 +109,7 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(
                 "http://localhost:5173",  // Vite dev server
+                "http://localhost:5174",  // Vite fallback port
                 "http://localhost:3000")  // Alternativa
             .AllowAnyHeader()
             .AllowAnyMethod()
