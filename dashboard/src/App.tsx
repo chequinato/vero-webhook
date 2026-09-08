@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { api, IS_DEMO } from './api';
 import { useSignalR } from './useSignalR';
 import { useClock } from './hooks/useClock';
@@ -17,8 +17,11 @@ import { Situation } from './components/Situation';
 import { VolumeChart } from './components/VolumeChart';
 import { Feed } from './components/Feed';
 import { Composition } from './components/Composition';
+import { Cadence } from './components/Cadence';
 import { Observability } from './components/Observability';
 import { Ledger } from './components/Ledger';
+import { Console, type Comando } from './components/Console';
+import { useAtalhoConsole } from './hooks/useAtalhoConsole';
 import type { Stats, VolumeHora, TransacaoDto, MlMetrics, StatusPatch } from './types';
 import './App.css';
 
@@ -37,6 +40,19 @@ const PAGINA = 15;
 const AMOSTRA = 100;
 /** Silêncio necessário depois do último evento para reconciliar. */
 const QUIETUDE = 2500;
+/** Corte de bloqueio do modelo — o mesmo do `DashboardController`. */
+const LIMIAR = 0.7;
+
+/** Âncoras do console: a numeração da folha é o índice do documento. */
+const SECOES = [
+  { id: 's-motor', idx: '00', nome: 'Motor de decisão' },
+  { id: 's-situacao', idx: '01', nome: 'Situação — 24 horas' },
+  { id: 's-fluxo', idx: '02', nome: 'Fluxo por hora e feed' },
+  { id: 's-composicao', idx: '04', nome: 'Composição das decisões' },
+  { id: 's-cadencia', idx: '05', nome: 'Cadência do fluxo' },
+  { id: 's-obs', idx: '06', nome: 'Observabilidade do enlace' },
+  { id: 's-registro', idx: '07', nome: 'Registro' },
+];
 
 function useMode() {
   const [mode, setMode] = useState<Mode>(
@@ -69,9 +85,12 @@ function App() {
   const [sync, setSync] = useState<Date | null>(null);
   const [aoVivo, setAoVivo] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
+  // Nome deliberadamente não é `console`: sombrear o objeto global quebraria
+  // o `console.warn` da própria carga de dados algumas linhas abaixo.
+  const [regua, setRegua] = useState(false);
 
   const clock = useClock();
-  const [, toggleMode] = useMode();
+  const [mode, toggleMode] = useMode();
   const tel = useTelemetria();
 
   // Último estado conhecido de cada linha, para saber de qual coluna
@@ -230,6 +249,78 @@ function App() {
     [aoMudarStatus],
   );
 
+  /** Rola até uma seção da folha pelo índice impresso. */
+  const irPara = useCallback((id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
+  const abrirRegua = useCallback(() => setRegua(true), []);
+  useAtalhoConsole(abrirRegua);
+
+  /**
+   * O repertório do console. Tudo o que a folha faz por clique também tem de
+   * caber aqui — se um comando existe só na régua, ele vira segredo; se
+   * existe só no botão, a régua vira enfeite.
+   */
+  const comandos = useMemo<Comando[]>(
+    () => [
+      ...[
+        { key: '', label: 'Tudo' },
+        { key: 'bloqueada', label: 'Bloqueadas' },
+        { key: 'suspeita', label: 'Suspeitas' },
+        { key: 'aprovada', label: 'Aprovadas' },
+        { key: 'aceitaprovisoria', label: 'Em análise' },
+      ].map(f => ({
+        id: `filtro:${f.key || 'tudo'}`,
+        grupo: 'filtrar o registro',
+        rotulo: f.label,
+        termos: f.key,
+        dica: 'seção 07',
+        ativo: filter === f.key,
+        executar: () => {
+          handleFilterChange(f.key);
+          irPara('s-registro');
+        },
+      })),
+
+      ...SECOES.map(s => ({
+        id: `ir:${s.id}`,
+        grupo: 'ir para',
+        rotulo: s.nome,
+        termos: s.idx,
+        dica: s.idx,
+        executar: () => irPara(s.id),
+      })),
+
+      {
+        id: 'folha:modo',
+        grupo: 'folha',
+        rotulo: mode === 'paper' ? 'Inverter para tinta' : 'Inverter para papel',
+        termos: 'tema escuro claro negativo',
+        dica: mode === 'paper' ? 'papel → tinta' : 'tinta → papel',
+        executar: toggleMode,
+      },
+      {
+        id: 'folha:sincronia',
+        grupo: 'folha',
+        rotulo: 'Forçar sincronia com o servidor',
+        termos: 'recarregar atualizar buscar',
+        dica: sync
+          ? `última às ${sync.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+          : 'ainda sem sincronia',
+        executar: () => setRefreshKey(k => k + 1),
+      },
+      {
+        id: 'folha:topo',
+        grupo: 'folha',
+        rotulo: 'Voltar ao topo do boletim',
+        termos: 'inicio cabecalho',
+        executar: () => window.scrollTo({ top: 0, behavior: 'smooth' }),
+      },
+    ],
+    [filter, mode, sync, handleFilterChange, irPara, toggleMode],
+  );
+
   const hoje = new Date().toLocaleDateString('pt-BR', {
     day: '2-digit',
     month: '2-digit',
@@ -263,6 +354,15 @@ function App() {
         </span>
 
         <button
+          className="rail-regua"
+          onClick={abrirRegua}
+          title="Console de comando (⌘K)"
+          aria-label="Abrir console de comando"
+        >
+          ⌘K
+        </button>
+
+        <button
           className="invert"
           onClick={toggleMode}
           title="Inverter papel e tinta"
@@ -291,7 +391,7 @@ function App() {
         {/* ══ 00 — MOTOR (o palco) ══ */}
         <Suspense
           fallback={
-            <section className="motor">
+            <section className="motor" id="s-motor">
               <div className="motor-head">
                 <span>
                   <span className="idx">00</span>{' '}
@@ -302,10 +402,12 @@ function App() {
             </section>
           }
         >
-          <Engine amostra={amostra} conectado={connected} onFiltrar={filtrarPeloMotor} />
+          <div id="s-motor">
+            <Engine amostra={amostra} conectado={connected} onFiltrar={filtrarPeloMotor} />
+          </div>
         </Suspense>
 
-        <div className="section-mark rv" style={{ ['--i' as string]: 1 }}>
+        <div className="section-mark rv" id="s-situacao" style={{ ['--i' as string]: 1 }}>
           <span className="idx">01</span>
           <span className="name">Situação — janela de 24 horas</span>
         </div>
@@ -344,7 +446,7 @@ function App() {
         </div>
 
         {/* ══ FAIXA DE TELEMETRIA — fluxo e feed ══ */}
-        <section className="band rv" style={{ ['--i' as string]: 8 }}>
+        <section className="band rv" id="s-fluxo" style={{ ['--i' as string]: 8 }}>
           <span className="band-sweep" key={varredura} aria-hidden="true" />
 
           <div className="band-grid">
@@ -397,13 +499,20 @@ function App() {
         </section>
 
         {/* ══ 04 — COMPOSIÇÃO ══ */}
-        <Composition stats={stats} amostra={amostra} />
+        <div id="s-composicao">
+          <Composition stats={stats} amostra={amostra} />
+        </div>
+
+        {/* ══ 05 — CADÊNCIA ══ */}
+        <div id="s-cadencia">
+          <Cadence amostra={amostra} limiar={LIMIAR} />
+        </div>
 
         {/* ══ FAIXA DE TELEMETRIA — observabilidade ══ */}
-        <section className="band band--obs">
+        <section className="band band--obs" id="s-obs">
           <div className="band-head band-head--solo">
             <span>
-              <span className="idx">05</span> <span className="name">Observabilidade do enlace</span>
+              <span className="idx">06</span> <span className="name">Observabilidade do enlace</span>
             </span>
             <span className="band-legend">
               <span>medido no navegador · nada estimado</span>
@@ -412,6 +521,7 @@ function App() {
           <Observability conectado={connected} />
         </section>
 
+        <div id="s-registro">
         <Ledger
           transactions={transactions}
           total={total}
@@ -421,7 +531,9 @@ function App() {
           onFilterChange={handleFilterChange}
           onPageChange={setPage}
           onReavaliar={reavaliar}
+          limiar={LIMIAR}
         />
+        </div>
 
         <footer className="colophon">
           <span>Vero — detecção híbrida de anomalias</span>
@@ -429,6 +541,8 @@ function App() {
           <span>{connected ? 'transmissão ao vivo' : 'leitura estática'}</span>
         </footer>
       </div>
+
+      {regua && <Console comandos={comandos} onFechar={() => setRegua(false)} />}
     </div>
   );
 }
