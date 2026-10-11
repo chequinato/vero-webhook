@@ -21,7 +21,8 @@ Para rodar contra a API de verdade sem Postgres:
 
 ```bash
 # na raiz, em outro terminal
-dotnet run --project src/Vero.Api -- --dev   # SQLite em memória, dados semeados
+export VERO_HMAC_SECRET=um-segredo-local-qualquer   # o mesmo no simulador
+dotnet run --project src/Vero.Api -- --dev           # SQLite em memória, dados semeados
 ```
 
 ## Direção visual

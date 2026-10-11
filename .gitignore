@@ -29,3 +29,6 @@ Thumbs.db
 # NuGet
 *.nupkg
 packages/
+
+# Configurações locais do Claude Code
+.claude/

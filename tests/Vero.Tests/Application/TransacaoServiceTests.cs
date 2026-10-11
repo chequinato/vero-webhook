@@ -1,4 +1,5 @@
 using Moq;
+using Vero.Application.Models;
 using Vero.Application.Services;
 using Vero.Domain.Entities;
 using Vero.Domain.Enums;
@@ -9,42 +10,59 @@ namespace Vero.Tests.Application;
 
 public class TransacaoServiceTests
 {
-    private readonly Mock<ITransacaoRepository> _transacaoRepoMock;
-    private readonly Mock<IContaRepository> _contaRepoMock;
-    private readonly Mock<IFilaTransacao> _filaMock;
+    private readonly Mock<ITransacaoRepository> _transacaoRepoMock = new();
+    private readonly Mock<IContaRepository> _contaRepoMock = new();
+    private readonly Mock<IFilaTransacao> _filaMock = new();
+    private readonly Mock<IRiskScoringService> _riskScoringMock = new();
+    private readonly Mock<INotificadorTransacao> _notificadorMock = new();
     private readonly TransacaoService _service;
+
+    private static readonly Conta ContaRemetente = new()
+    {
+        Id = 1, NumeroConta = "conta_123", Titular = "Maria", Score = 85
+    };
+
+    private static readonly Conta ContaDestinatario = new()
+    {
+        Id = 2, NumeroConta = "conta_456", Titular = "João", Score = 72
+    };
 
     public TransacaoServiceTests()
     {
-        _transacaoRepoMock = new Mock<ITransacaoRepository>();
-        _contaRepoMock = new Mock<IContaRepository>();
-        _filaMock = new Mock<IFilaTransacao>();
+        _contaRepoMock.Setup(r => r.ObterPorNumeroContaAsync("conta_123")).ReturnsAsync(ContaRemetente);
+        _contaRepoMock.Setup(r => r.ObterPorNumeroContaAsync("conta_456")).ReturnsAsync(ContaDestinatario);
+
+        // Risk scoring padrão: 0.15 (baixo risco)
+        _riskScoringMock.Setup(r => r.CalcularRiscoAsync(
+                It.IsAny<Transacao>(), It.IsAny<Conta?>(), It.IsAny<int>()))
+            .ReturnsAsync(0.15f);
 
         // Sem regras síncronas por padrão — testes individuais adicionam quando necessário
         _service = CriarService([]);
     }
 
-    private TransacaoService CriarService(IEnumerable<IRule> regras)
+    private TransacaoService CriarService(IEnumerable<IRegraSincrona> regras)
     {
+        var calculadora = new CalculadoraDeRisco(_transacaoRepoMock.Object, _riskScoringMock.Object);
+
         return new TransacaoService(
             _transacaoRepoMock.Object,
             _contaRepoMock.Object,
             _filaMock.Object,
+            calculadora,
+            _notificadorMock.Object,
             regras);
     }
 
-    private static Transacao CriarTransacao(string id = "txn_001", decimal valor = 1500m)
+    private static NovaTransacao CriarNovaTransacao(string id = "txn_001", decimal valor = 1500m) =>
+        new(id, valor, "conta_123", "conta_456", "pix", "BRL", DateTime.UtcNow);
+
+    private static Mock<IRegraSincrona> CriarRegra(string nome, bool violada)
     {
-        return new Transacao
-        {
-            Id = id,
-            RemetenteId = 1,
-            DestinatarioId = 2,
-            Valor = valor,
-            Tipo = "pix",
-            Moeda = "BRL",
-            Timestamp = DateTime.UtcNow
-        };
+        var regra = new Mock<IRegraSincrona>();
+        regra.Setup(r => r.Nome).Returns(nome);
+        regra.Setup(r => r.Avaliar(It.IsAny<Transacao>())).ReturnsAsync(violada);
+        return regra;
     }
 
     // ──────────────────────────────────────────────────────────
@@ -54,36 +72,79 @@ public class TransacaoServiceTests
     [Fact]
     public async Task ProcessarTransacao_TransacaoNormal_DeveAceitarProvisoriamente()
     {
-        var transacao = CriarTransacao();
-        _transacaoRepoMock.Setup(r => r.ExisteAsync(transacao.Id)).ReturnsAsync(false);
+        var resultado = await _service.ProcessarTransacaoAsync(CriarNovaTransacao());
 
-        var (resultado, isDuplicata) = await _service.ProcessarTransacaoAsync(transacao);
-
-        Assert.Equal(StatusTransacao.AceitaProvisoria, resultado.Status);
-        Assert.Null(resultado.Motivo);
-        Assert.False(isDuplicata);
+        Assert.Equal(DesfechoRecebimento.Aceita, resultado.Desfecho);
+        Assert.Equal(StatusTransacao.AceitaProvisoria, resultado.Transacao!.Status);
+        Assert.Null(resultado.Transacao.Motivo);
     }
 
     [Fact]
-    public async Task ProcessarTransacao_TransacaoNormal_DevePersistirNoBanco()
+    public async Task ProcessarTransacao_DeveResolverContasPeloNumero()
     {
-        var transacao = CriarTransacao();
-        _transacaoRepoMock.Setup(r => r.ExisteAsync(transacao.Id)).ReturnsAsync(false);
+        var resultado = await _service.ProcessarTransacaoAsync(CriarNovaTransacao());
 
-        await _service.ProcessarTransacaoAsync(transacao);
+        Assert.Equal(ContaRemetente.Id, resultado.Transacao!.RemetenteId);
+        Assert.Equal(ContaDestinatario.Id, resultado.Transacao.DestinatarioId);
+    }
+
+    [Fact]
+    public async Task ProcessarTransacao_TransacaoNormal_DevePersistirEEnviarParaFila()
+    {
+        var nova = CriarNovaTransacao();
+
+        await _service.ProcessarTransacaoAsync(nova);
 
         _transacaoRepoMock.Verify(r => r.AdicionarAsync(It.IsAny<Transacao>()), Times.Once);
+        _filaMock.Verify(f => f.EnviarParaAnaliseAsync(nova.Id), Times.Once);
     }
 
     [Fact]
-    public async Task ProcessarTransacao_TransacaoNormal_DeveEnviarParaFila()
+    public async Task ProcessarTransacao_DeveGuardarRiskScore()
     {
-        var transacao = CriarTransacao();
-        _transacaoRepoMock.Setup(r => r.ExisteAsync(transacao.Id)).ReturnsAsync(false);
+        var resultado = await _service.ProcessarTransacaoAsync(CriarNovaTransacao());
 
-        await _service.ProcessarTransacaoAsync(transacao);
+        Assert.Equal(0.15f, resultado.Transacao!.RiskScore);
+    }
 
-        _filaMock.Verify(f => f.EnviarParaAnaliseAsync(transacao.Id), Times.Once);
+    [Fact]
+    public async Task ProcessarTransacao_DevePassarVelocityParaRiskScoring()
+    {
+        _transacaoRepoMock.Setup(r => r.ContarPorRemetenteNoPeriodoAsync(
+                ContaRemetente.Id, It.IsAny<DateTime>(), It.IsAny<DateTime>()))
+            .ReturnsAsync(5);
+
+        await _service.ProcessarTransacaoAsync(CriarNovaTransacao());
+
+        _riskScoringMock.Verify(r => r.CalcularRiscoAsync(
+            It.IsAny<Transacao>(), ContaRemetente, 5), Times.Once);
+    }
+
+    [Fact]
+    public async Task ProcessarTransacao_DeveNotificarDashboard()
+    {
+        var nova = CriarNovaTransacao();
+
+        await _service.ProcessarTransacaoAsync(nova);
+
+        _notificadorMock.Verify(n => n.TransacaoRecebidaAsync(
+            It.Is<Transacao>(t => t.Id == nova.Id)), Times.Once);
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // Conta não encontrada
+    // ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ProcessarTransacao_ContaInexistente_NaoDevePersistir()
+    {
+        var nova = CriarNovaTransacao() with { NumeroContaRemetente = "conta_inexistente" };
+
+        var resultado = await _service.ProcessarTransacaoAsync(nova);
+
+        Assert.Equal(DesfechoRecebimento.ContaNaoEncontrada, resultado.Desfecho);
+        _transacaoRepoMock.Verify(r => r.AdicionarAsync(It.IsAny<Transacao>()), Times.Never);
+        _notificadorMock.Verify(n => n.TransacaoRecebidaAsync(It.IsAny<Transacao>()), Times.Never);
     }
 
     // ──────────────────────────────────────────────────────────
@@ -93,33 +154,21 @@ public class TransacaoServiceTests
     [Fact]
     public async Task ProcessarTransacao_RegraViolada_DeveBloquear()
     {
-        var regraMock = new Mock<IRule>();
-        regraMock.Setup(r => r.Nome).Returns("regra_teste");
-        regraMock.Setup(r => r.Avaliar(It.IsAny<Transacao>())).ReturnsAsync(true);
+        var service = CriarService([CriarRegra("regra_teste", violada: true).Object]);
 
-        var service = CriarService([regraMock.Object]);
-        var transacao = CriarTransacao();
-        _transacaoRepoMock.Setup(r => r.ExisteAsync(transacao.Id)).ReturnsAsync(false);
+        var resultado = await service.ProcessarTransacaoAsync(CriarNovaTransacao());
 
-        var (resultado, isDuplicata) = await service.ProcessarTransacaoAsync(transacao);
-
-        Assert.Equal(StatusTransacao.Bloqueada, resultado.Status);
-        Assert.Equal("regra_teste", resultado.Motivo);
-        Assert.False(isDuplicata);
+        Assert.Equal(DesfechoRecebimento.Bloqueada, resultado.Desfecho);
+        Assert.Equal(StatusTransacao.Bloqueada, resultado.Transacao!.Status);
+        Assert.Equal("regra_teste", resultado.Transacao.Motivo);
     }
 
     [Fact]
     public async Task ProcessarTransacao_RegraViolada_NaoDeveEnviarParaFila()
     {
-        var regraMock = new Mock<IRule>();
-        regraMock.Setup(r => r.Avaliar(It.IsAny<Transacao>())).ReturnsAsync(true);
-        regraMock.Setup(r => r.Nome).Returns("bloqueio");
+        var service = CriarService([CriarRegra("bloqueio", violada: true).Object]);
 
-        var service = CriarService([regraMock.Object]);
-        var transacao = CriarTransacao();
-        _transacaoRepoMock.Setup(r => r.ExisteAsync(transacao.Id)).ReturnsAsync(false);
-
-        await service.ProcessarTransacaoAsync(transacao);
+        await service.ProcessarTransacaoAsync(CriarNovaTransacao());
 
         _filaMock.Verify(f => f.EnviarParaAnaliseAsync(It.IsAny<string>()), Times.Never);
     }
@@ -127,15 +176,9 @@ public class TransacaoServiceTests
     [Fact]
     public async Task ProcessarTransacao_RegraViolada_DevePersistirComStatusBloqueada()
     {
-        var regraMock = new Mock<IRule>();
-        regraMock.Setup(r => r.Avaliar(It.IsAny<Transacao>())).ReturnsAsync(true);
-        regraMock.Setup(r => r.Nome).Returns("bloqueio");
+        var service = CriarService([CriarRegra("bloqueio", violada: true).Object]);
 
-        var service = CriarService([regraMock.Object]);
-        var transacao = CriarTransacao();
-        _transacaoRepoMock.Setup(r => r.ExisteAsync(transacao.Id)).ReturnsAsync(false);
-
-        await service.ProcessarTransacaoAsync(transacao);
+        await service.ProcessarTransacaoAsync(CriarNovaTransacao());
 
         _transacaoRepoMock.Verify(r => r.AdicionarAsync(It.Is<Transacao>(
             t => t.Status == StatusTransacao.Bloqueada)), Times.Once);
@@ -146,19 +189,15 @@ public class TransacaoServiceTests
     // ──────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task ProcessarTransacao_Duplicada_DeveRetornarExistenteComFlag()
+    public async Task ProcessarTransacao_Duplicada_DeveRetornarExistenteSemReprocessar()
     {
-        var existente = CriarTransacao();
-        existente.Status = StatusTransacao.Aprovada;
-
-        _transacaoRepoMock.Setup(r => r.ExisteAsync(existente.Id)).ReturnsAsync(true);
+        var existente = new Transacao { Id = "txn_001", Status = StatusTransacao.Aprovada };
         _transacaoRepoMock.Setup(r => r.ObterPorIdAsync(existente.Id)).ReturnsAsync(existente);
 
-        var novaTransacao = CriarTransacao();
-        var (resultado, isDuplicata) = await _service.ProcessarTransacaoAsync(novaTransacao);
+        var resultado = await _service.ProcessarTransacaoAsync(CriarNovaTransacao(existente.Id));
 
-        Assert.True(isDuplicata);
-        Assert.Equal(StatusTransacao.Aprovada, resultado.Status);
+        Assert.Equal(DesfechoRecebimento.Duplicada, resultado.Desfecho);
+        Assert.Same(existente, resultado.Transacao);
         _transacaoRepoMock.Verify(r => r.AdicionarAsync(It.IsAny<Transacao>()), Times.Never);
         _filaMock.Verify(f => f.EnviarParaAnaliseAsync(It.IsAny<string>()), Times.Never);
     }
@@ -170,24 +209,17 @@ public class TransacaoServiceTests
     [Fact]
     public async Task ProcessarTransacao_MultiplasRegras_DeveParaNaPrimeiraViolada()
     {
-        var regra1 = new Mock<IRule>();
-        regra1.Setup(r => r.Avaliar(It.IsAny<Transacao>())).ReturnsAsync(false);
-        regra1.Setup(r => r.Nome).Returns("regra_1");
+        var regra3 = CriarRegra("regra_3", violada: true);
+        var service = CriarService(
+        [
+            CriarRegra("regra_1", violada: false).Object,
+            CriarRegra("regra_2", violada: true).Object,
+            regra3.Object
+        ]);
 
-        var regra2 = new Mock<IRule>();
-        regra2.Setup(r => r.Avaliar(It.IsAny<Transacao>())).ReturnsAsync(true);
-        regra2.Setup(r => r.Nome).Returns("regra_2");
+        var resultado = await service.ProcessarTransacaoAsync(CriarNovaTransacao());
 
-        var regra3 = new Mock<IRule>();
-        regra3.Setup(r => r.Nome).Returns("regra_3");
-
-        var service = CriarService([regra1.Object, regra2.Object, regra3.Object]);
-        var transacao = CriarTransacao();
-        _transacaoRepoMock.Setup(r => r.ExisteAsync(transacao.Id)).ReturnsAsync(false);
-
-        var (resultado, _) = await service.ProcessarTransacaoAsync(transacao);
-
-        Assert.Equal("regra_2", resultado.Motivo);
+        Assert.Equal("regra_2", resultado.Transacao!.Motivo);
         regra3.Verify(r => r.Avaliar(It.IsAny<Transacao>()), Times.Never);
     }
 
@@ -198,7 +230,7 @@ public class TransacaoServiceTests
     [Fact]
     public async Task ConsultarStatus_TransacaoExiste_DeveRetornar()
     {
-        var transacao = CriarTransacao();
+        var transacao = new Transacao { Id = "txn_001" };
         _transacaoRepoMock.Setup(r => r.ObterPorIdAsync(transacao.Id)).ReturnsAsync(transacao);
 
         var resultado = await _service.ConsultarStatusAsync(transacao.Id);
@@ -220,7 +252,7 @@ public class TransacaoServiceTests
     [Fact]
     public async Task ListarSuspeitas_DeveDelegarAoRepositorio()
     {
-        var suspeitas = new List<Transacao> { CriarTransacao() }.AsReadOnly();
+        var suspeitas = new List<Transacao> { new() { Id = "txn_001" } }.AsReadOnly();
         _transacaoRepoMock.Setup(r => r.ListarSuspeitasAsync()).ReturnsAsync(suspeitas);
 
         var resultado = await _service.ListarSuspeitasAsync();

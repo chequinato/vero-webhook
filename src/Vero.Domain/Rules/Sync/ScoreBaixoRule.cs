@@ -6,7 +6,7 @@ namespace Vero.Domain.Rules.Sync;
 /// <summary>
 /// Bloqueia transações quando a conta remetente tem score de confiança abaixo de 35 (regra síncrona).
 /// </summary>
-public class ScoreBaixoRule : IRule
+public class ScoreBaixoRule : IRegraSincrona
 {
     public const int ScoreMinimo = 35;
 

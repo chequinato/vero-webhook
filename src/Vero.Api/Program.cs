@@ -1,108 +1,47 @@
-using Microsoft.EntityFrameworkCore;
 using Vero.Api.Hubs;
 using Vero.Api.Middleware;
-using Vero.Application.Services;
+using Vero.Application;
 using Vero.Domain.Interfaces;
-using Vero.Domain.Rules;
-using Vero.Domain.Rules.Sync;
+using Vero.Infrastructure;
 using Vero.Infrastructure.Data;
-using Vero.Infrastructure.Notifications;
-using Vero.Infrastructure.Queue;
-using Vero.Infrastructure.Repositories;
-using Vero.Infrastructure.Security;
-using Vero.ML.Services;
+using Vero.ML;
 
+// ────────────────────────────────────────────────────────────────
+// Composition Root
+//
+// Este é o ÚNICO lugar que conhece todas as camadas ao mesmo tempo.
+// Cada camada expõe um método Add* que registra as próprias peças;
+// aqui a gente só escolhe quais peças montar.
+// ────────────────────────────────────────────────────────────────
 var builder = WebApplication.CreateBuilder(args);
 
-// ────────────────────────────────────────────────────────────────
-// Determinar modo de execução: --dev usa SQLite InMemory (zero dependência)
-// ────────────────────────────────────────────────────────────────
+// --dev usa SQLite em memória (zero dependência)
 var usarSqlite = args.Contains("--dev")
     || builder.Configuration.GetValue<bool>("UseSqlite")
     || Environment.GetEnvironmentVariable("VERO_USE_SQLITE") == "true";
 
-// ────────────────────────────────────────────────────────────────
-// Banco de dados
-// ────────────────────────────────────────────────────────────────
+// ── Infrastructure: banco, repositórios, fila, alertas ──────────
 if (usarSqlite)
 {
-    // SQLite em memória com cache compartilhado — persiste enquanto a API estiver rodando
-    builder.Services.AddDbContext<VeroDbContext>(options =>
-        options.UseSqlite("DataSource=VeroDev;Mode=Memory;Cache=Shared"));
-
-    // Manter uma conexão aberta para o banco em memória não ser destruído
-    var keepAliveConnection = new Microsoft.Data.Sqlite.SqliteConnection("DataSource=VeroDev;Mode=Memory;Cache=Shared");
-    keepAliveConnection.Open();
-    builder.Services.AddSingleton(keepAliveConnection);
-
+    builder.Services.AddVeroInfrastructureEmMemoria();
     builder.Logging.AddConsole();
     Console.WriteLine("🔧 Modo DEV: usando SQLite em memória (sem PostgreSQL)");
 }
 else
 {
-    var connectionString = builder.Configuration.GetConnectionString("VeroDb")
-        ?? Environment.GetEnvironmentVariable("VERO_CONNECTION_STRING")
-        ?? throw new InvalidOperationException("Connection string não configurada. Defina ConnectionStrings:VeroDb ou VERO_CONNECTION_STRING.");
-
-    builder.Services.AddDbContext<VeroDbContext>(options =>
-        options.UseNpgsql(connectionString));
+    builder.Services.AddVeroInfrastructure(
+        builder.Configuration.GetConnectionString("VeroDb"),
+        builder.Configuration["Encryption:Key"]);
 }
 
-// ────────────────────────────────────────────────────────────────
-// Criptografia em repouso (AES-256) — desabilitada em modo SQLite/dev
-// ────────────────────────────────────────────────────────────────
-if (!usarSqlite)
-{
-    var encryptionKey = builder.Configuration["Encryption:Key"]
-        ?? Environment.GetEnvironmentVariable("VERO_ENCRYPTION_KEY")
-        ?? throw new InvalidOperationException("Chave de criptografia não configurada. Defina Encryption:Key ou VERO_ENCRYPTION_KEY.");
+// ── ML, Application (services + regras) ─────────────────────────
+builder.Services.AddVeroMl(builder.Configuration["ML:ModelPath"]);
+builder.Services.AddVeroApplication();
 
-    var cryptoService = new AesCryptoService(encryptionKey);
-    builder.Services.AddSingleton<ICryptoService>(cryptoService);
-}
-
-// ────────────────────────────────────────────────────────────────
-// Repositórios
-// ────────────────────────────────────────────────────────────────
-builder.Services.AddScoped<IContaRepository, ContaRepository>();
-builder.Services.AddScoped<ITransacaoRepository, TransacaoRepository>();
-
-// ────────────────────────────────────────────────────────────────
-// Fila e Alertas (implementações locais; trocar por SQS/SNS em prod)
-// ────────────────────────────────────────────────────────────────
-builder.Services.AddSingleton<IFilaTransacao, InMemoryFilaTransacao>();
-builder.Services.AddSingleton<IAlertaService, ConsoleAlertaService>();
-
-// ────────────────────────────────────────────────────────────────
-// Regras síncronas (injetadas como IEnumerable<IRule> no TransacaoService)
-// ────────────────────────────────────────────────────────────────
-builder.Services.AddScoped<IRule, ValorAltoRule>();
-builder.Services.AddScoped<IRule, ScoreBaixoRule>();
-
-// ────────────────────────────────────────────────────────────────
-// Machine Learning — Risk Scoring
-// ────────────────────────────────────────────────────────────────
-var modelPath = builder.Configuration["ML:ModelPath"]
-    ?? Path.Combine(AppContext.BaseDirectory, "Models", "fraud_model.zip");
-
-builder.Services.AddSingleton<IRiskScoringService>(sp =>
-    new MlRiskScoringService(modelPath, sp.GetRequiredService<ILogger<MlRiskScoringService>>()));
-
-// ────────────────────────────────────────────────────────────────
-// Services
-// ────────────────────────────────────────────────────────────────
-builder.Services.AddScoped<ITransacaoService, TransacaoService>();
-builder.Services.AddScoped<AnomalyDetectionService>();
-
-// ────────────────────────────────────────────────────────────────
-// SignalR (real-time para o dashboard)
-// ────────────────────────────────────────────────────────────────
+// ── Api: tempo real, CORS, controllers ──────────────────────────
 builder.Services.AddSignalR();
-builder.Services.AddSingleton<TransactionHubNotifier>();
+builder.Services.AddSingleton<INotificadorTransacao, TransactionHubNotifier>();
 
-// ────────────────────────────────────────────────────────────────
-// CORS (permitir React dev server)
-// ────────────────────────────────────────────────────────────────
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("DashboardPolicy", policy =>
@@ -117,21 +56,11 @@ builder.Services.AddCors(options =>
     });
 });
 
-// ────────────────────────────────────────────────────────────────
-// Seeder (registrar para DI)
-// ────────────────────────────────────────────────────────────────
-builder.Services.AddScoped<DevDataSeeder>();
-
-// ────────────────────────────────────────────────────────────────
-// Controllers
-// ────────────────────────────────────────────────────────────────
 builder.Services.AddControllers();
 
 var app = builder.Build();
 
-// ────────────────────────────────────────────────────────────────
-// Inicialização do banco e seeder (modo dev)
-// ────────────────────────────────────────────────────────────────
+// ── Modo dev: cria o schema e popula dados de exemplo ───────────
 if (usarSqlite)
 {
     using var scope = app.Services.CreateScope();
@@ -140,13 +69,12 @@ if (usarSqlite)
     // Criar schema sem migrations (SQLite InMemory não persiste migrations)
     await db.Database.EnsureCreatedAsync();
 
-    // Semear dados de desenvolvimento
     var seeder = scope.ServiceProvider.GetRequiredService<DevDataSeeder>();
     await seeder.SeedAsync(totalTransacoes: 300);
 }
 
 // ────────────────────────────────────────────────────────────────
-// Pipeline de middlewares (ordem importa!)
+// Pipeline de middlewares (ordem importa! — Chain of Responsibility)
 // ────────────────────────────────────────────────────────────────
 app.UseCors("DashboardPolicy");
 
