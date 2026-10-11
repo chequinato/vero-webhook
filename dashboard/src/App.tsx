@@ -40,7 +40,7 @@ const PAGINA = 15;
 const AMOSTRA = 100;
 /** Silêncio necessário depois do último evento para reconciliar. */
 const QUIETUDE = 2500;
-/** Corte de bloqueio do modelo — o mesmo do `DashboardController`. */
+/** Corte de bloqueio do modelo — o mesmo de `PoliticaDeRisco.LimiarBloqueio` na API. */
 const LIMIAR = 0.7;
 
 /** Âncoras do console: a numeração da folha é o índice do documento. */

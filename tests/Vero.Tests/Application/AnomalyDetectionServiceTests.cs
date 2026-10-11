@@ -18,7 +18,7 @@ public class AnomalyDetectionServiceTests
         _alertaMock = new Mock<IAlertaService>();
     }
 
-    private AnomalyDetectionService CriarService(IEnumerable<IRule> regras)
+    private AnomalyDetectionService CriarService(IEnumerable<IRegraAssincrona> regras)
     {
         return new AnomalyDetectionService(
             _transacaoRepoMock.Object,
@@ -83,7 +83,7 @@ public class AnomalyDetectionServiceTests
         var transacao = CriarTransacao();
         _transacaoRepoMock.Setup(r => r.ObterPorIdAsync(transacao.Id)).ReturnsAsync(transacao);
 
-        var regraMock = new Mock<IRule>();
+        var regraMock = new Mock<IRegraAssincrona>();
         regraMock.Setup(r => r.Avaliar(It.IsAny<Transacao>())).ReturnsAsync(true);
         regraMock.Setup(r => r.Nome).Returns("velocity");
 
@@ -100,7 +100,7 @@ public class AnomalyDetectionServiceTests
         var transacao = CriarTransacao();
         _transacaoRepoMock.Setup(r => r.ObterPorIdAsync(transacao.Id)).ReturnsAsync(transacao);
 
-        var regraMock = new Mock<IRule>();
+        var regraMock = new Mock<IRegraAssincrona>();
         regraMock.Setup(r => r.Avaliar(It.IsAny<Transacao>())).ReturnsAsync(true);
         regraMock.Setup(r => r.Nome).Returns("horario_estranho");
 
@@ -140,7 +140,7 @@ public class AnomalyDetectionServiceTests
         var transacao = CriarTransacao(status: status);
         _transacaoRepoMock.Setup(r => r.ObterPorIdAsync(transacao.Id)).ReturnsAsync(transacao);
 
-        var regraMock = new Mock<IRule>();
+        var regraMock = new Mock<IRegraAssincrona>();
         regraMock.Setup(r => r.Avaliar(It.IsAny<Transacao>())).ReturnsAsync(true);
         regraMock.Setup(r => r.Nome).Returns("qualquer");
 
@@ -162,15 +162,15 @@ public class AnomalyDetectionServiceTests
         var transacao = CriarTransacao();
         _transacaoRepoMock.Setup(r => r.ObterPorIdAsync(transacao.Id)).ReturnsAsync(transacao);
 
-        var regra1 = new Mock<IRule>();
+        var regra1 = new Mock<IRegraAssincrona>();
         regra1.Setup(r => r.Avaliar(It.IsAny<Transacao>())).ReturnsAsync(false);
         regra1.Setup(r => r.Nome).Returns("regra_ok");
 
-        var regra2 = new Mock<IRule>();
+        var regra2 = new Mock<IRegraAssincrona>();
         regra2.Setup(r => r.Avaliar(It.IsAny<Transacao>())).ReturnsAsync(true);
         regra2.Setup(r => r.Nome).Returns("regra_violada");
 
-        var regra3 = new Mock<IRule>();
+        var regra3 = new Mock<IRegraAssincrona>();
         regra3.Setup(r => r.Nome).Returns("regra_nunca_chega");
 
         var service = CriarService([regra1.Object, regra2.Object, regra3.Object]);

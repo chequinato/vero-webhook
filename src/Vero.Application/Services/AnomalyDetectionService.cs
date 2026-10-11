@@ -1,4 +1,3 @@
-using Vero.Domain.Entities;
 using Vero.Domain.Enums;
 using Vero.Domain.Interfaces;
 using Vero.Domain.Rules;
@@ -13,12 +12,12 @@ public class AnomalyDetectionService
 {
     private readonly ITransacaoRepository _transacaoRepository;
     private readonly IAlertaService _alertaService;
-    private readonly IEnumerable<IRule> _regrasAssincronas;
+    private readonly IEnumerable<IRegraAssincrona> _regrasAssincronas;
 
     public AnomalyDetectionService(
         ITransacaoRepository transacaoRepository,
         IAlertaService alertaService,
-        IEnumerable<IRule> regrasAssincronas)
+        IEnumerable<IRegraAssincrona> regrasAssincronas)
     {
         _transacaoRepository = transacaoRepository;
         _alertaService = alertaService;
@@ -37,16 +36,15 @@ public class AnomalyDetectionService
         // Só analisa transações com status "aceita_provisoria"
         if (transacao.Status != StatusTransacao.AceitaProvisoria) return;
 
-        foreach (var regra in _regrasAssincronas)
-        {
-            if (await regra.Avaliar(transacao))
-            {
-                await _transacaoRepository.AtualizarStatusAsync(
-                    transacaoId, StatusTransacao.Suspeita, regra.Nome);
+        var regraViolada = await _regrasAssincronas.PrimeiraVioladaAsync(transacao);
 
-                await _alertaService.EnviarAlertaAsync(transacaoId, regra.Nome);
-                return;
-            }
+        if (regraViolada is not null)
+        {
+            await _transacaoRepository.AtualizarStatusAsync(
+                transacaoId, StatusTransacao.Suspeita, regraViolada.Nome);
+
+            await _alertaService.EnviarAlertaAsync(transacaoId, regraViolada.Nome);
+            return;
         }
 
         // Passou em todas as regras assíncronas: aprovada

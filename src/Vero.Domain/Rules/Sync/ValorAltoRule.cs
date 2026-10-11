@@ -5,7 +5,7 @@ namespace Vero.Domain.Rules.Sync;
 /// <summary>
 /// Bloqueia transações com valor acima de R$100.000 (regra síncrona).
 /// </summary>
-public class ValorAltoRule : IRule
+public class ValorAltoRule : IRegraSincrona
 {
     public const decimal LimiteValor = 100_000m;
 

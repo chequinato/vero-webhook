@@ -5,7 +5,7 @@ namespace Vero.Domain.Rules.Async;
 /// <summary>
 /// Marca como suspeita transações com valores redondos (múltiplos de 1000) acima de R$1.000 (regra assíncrona).
 /// </summary>
-public class ValorRedondoRule : IRule
+public class ValorRedondoRule : IRegraAssincrona
 {
     public const decimal ValorMinimo = 1_000m;
 

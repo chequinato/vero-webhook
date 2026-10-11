@@ -23,7 +23,7 @@ const MOTIVOS = [
   'padrão fora do perfil',
 ];
 
-/** Corte de bloqueio do modelo — o mesmo do `DashboardController`. */
+/** Corte de bloqueio do modelo — o mesmo de `PoliticaDeRisco.LimiarBloqueio` na API. */
 export const LIMIAR_BLOQUEIO = 0.7;
 
 /** Teto do livro em memória; acima disso a cauda antiga é descartada. */

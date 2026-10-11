@@ -23,7 +23,7 @@ import type { TransacaoDto } from '../types';
 const H = 178;
 const PAD = { top: 16, right: 40, bottom: 26, left: 34 };
 
-/** Corte em produção — o mesmo do `DashboardController`. */
+/** Corte em produção — o mesmo de `PoliticaDeRisco.LimiarBloqueio` na API. */
 const CORTE_VIGENTE = 70;
 
 const brl = (v: number) =>

@@ -5,7 +5,7 @@ namespace Vero.Domain.Rules.Async;
 /// <summary>
 /// Marca como suspeita transações realizadas em horários incomuns — entre 1h e 5h (regra assíncrona).
 /// </summary>
-public class HorarioEstranhoRule : IRule
+public class HorarioEstranhoRule : IRegraAssincrona
 {
     public const int HoraInicio = 1;
     public const int HoraFim = 5;

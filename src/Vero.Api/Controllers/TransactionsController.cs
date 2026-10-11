@@ -1,41 +1,30 @@
 using Microsoft.AspNetCore.Mvc;
 using Vero.Api.DTOs.Requests;
 using Vero.Api.DTOs.Responses;
-using Vero.Api.Hubs;
-using Vero.Domain.Entities;
-using Vero.Domain.Enums;
-using Vero.Domain.Interfaces;
+using Vero.Api.Mappers;
+using Vero.Application.Interfaces;
+using Vero.Application.Models;
 
 namespace Vero.Api.Controllers;
 
+/// <summary>
+/// Webhook de transações. O controller só faz três coisas:
+/// valida a entrada, chama a Application e traduz o resultado para HTTP.
+/// Regra de negócio aqui dentro é sinal de que algo está no lugar errado.
+/// </summary>
 [ApiController]
 [Route("[controller]")]
 public class TransactionsController : ControllerBase
 {
     private readonly ITransacaoService _transacaoService;
-    private readonly IContaRepository _contaRepository;
-    private readonly ITransacaoRepository _transacaoRepository;
-    private readonly IRiskScoringService _riskScoringService;
-    private readonly TransactionHubNotifier _hubNotifier;
 
-    public TransactionsController(
-        ITransacaoService transacaoService,
-        IContaRepository contaRepository,
-        ITransacaoRepository transacaoRepository,
-        IRiskScoringService riskScoringService,
-        TransactionHubNotifier hubNotifier)
+    public TransactionsController(ITransacaoService transacaoService)
     {
         _transacaoService = transacaoService;
-        _contaRepository = contaRepository;
-        _transacaoRepository = transacaoRepository;
-        _riskScoringService = riskScoringService;
-        _hubNotifier = hubNotifier;
     }
 
     /// <summary>
     /// POST /transactions — recebe uma transação via webhook.
-    /// Aplica regras síncronas + ML risk scoring.
-    /// Checagem de replay unificada: apenas o TransacaoService verifica duplicatas.
     /// </summary>
     [HttpPost]
     public async Task<IActionResult> ReceberTransacao([FromBody] TransacaoRequestDto request)
@@ -43,76 +32,35 @@ public class TransactionsController : ControllerBase
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
-        // Resolver contas pelo NumeroConta
-        var remetente = await _contaRepository.ObterPorNumeroContaAsync(request.Remetente);
-        var destinatario = await _contaRepository.ObterPorNumeroContaAsync(request.Destinatario);
+        var resultado = await _transacaoService.ProcessarTransacaoAsync(request.ParaNovaTransacao());
+        var transacao = resultado.Transacao;
 
-        if (remetente is null || destinatario is null)
-            return BadRequest(new { erro = "Conta remetente ou destinatária não encontrada." });
-
-        // Velocity: contar transações do remetente nos últimos 5 minutos
-        var transacoesRecentes = await _transacaoRepository.ContarPorRemetenteNoPeriodoAsync(
-            remetente.Id,
-            DateTime.UtcNow.AddMinutes(-5),
-            DateTime.UtcNow);
-
-        var transacao = new Transacao
+        return resultado.Desfecho switch
         {
-            Id = request.Id,
-            RemetenteId = remetente.Id,
-            DestinatarioId = destinatario.Id,
-            Valor = request.Valor,
-            Tipo = request.Tipo,
-            Moeda = request.Moeda,
-            Timestamp = request.Timestamp
-        };
+            DesfechoRecebimento.ContaNaoEncontrada =>
+                BadRequest(new { erro = "Conta remetente ou destinatária não encontrada." }),
 
-        // ML Risk Scoring — calcular antes de processar
-        var riskScore = await _riskScoringService.CalcularRiscoAsync(transacao, remetente, transacoesRecentes);
-        transacao.RiskScore = riskScore;
-
-        // Processar (o TransacaoService cuida da checagem de duplicata)
-        var (resultado, isDuplicata) = await _transacaoService.ProcessarTransacaoAsync(transacao);
-
-        if (isDuplicata)
-        {
-            return Conflict(new TransacaoResponseDto
+            DesfechoRecebimento.Duplicada => Conflict(new TransacaoResponseDto
             {
-                Status = resultado.Status.ToString().ToLowerInvariant(),
+                Status = transacao!.Status.ParaTexto(),
                 Motivo = "transacao_duplicada",
-                Id = resultado.Id
-            });
-        }
+                Id = transacao.Id
+            }),
 
-        // Notificar dashboard em tempo real
-        await _hubNotifier.NotificarTransacaoRecebida(new
-        {
-            id = resultado.Id,
-            status = resultado.Status.ToString().ToLowerInvariant(),
-            valor = resultado.Valor,
-            tipo = resultado.Tipo,
-            moeda = resultado.Moeda,
-            motivo = resultado.Motivo,
-            riskScore = resultado.RiskScore,
-            timestamp = resultado.Timestamp
-        });
-
-        if (resultado.Status == StatusTransacao.Bloqueada)
-        {
-            return StatusCode(403, new TransacaoResponseDto
+            DesfechoRecebimento.Bloqueada => StatusCode(403, new TransacaoResponseDto
             {
                 Status = "bloqueada",
-                Motivo = resultado.Motivo,
-                RiskScore = riskScore
-            });
-        }
+                Motivo = transacao!.Motivo,
+                RiskScore = transacao.RiskScore
+            }),
 
-        return Accepted(new TransacaoResponseDto
-        {
-            Status = "aceita_provisoria",
-            Id = resultado.Id,
-            RiskScore = riskScore
-        });
+            _ => Accepted(new TransacaoResponseDto
+            {
+                Status = "aceita_provisoria",
+                Id = transacao!.Id,
+                RiskScore = transacao.RiskScore
+            })
+        };
     }
 
     /// <summary>
@@ -128,7 +76,7 @@ public class TransactionsController : ControllerBase
         return Ok(new TransacaoStatusResponseDto
         {
             Id = transacao.Id,
-            Status = transacao.Status.ToString().ToLowerInvariant(),
+            Status = transacao.Status.ParaTexto(),
             Motivo = transacao.Motivo,
             AnalisadaEm = transacao.CreatedAt,
             RiskScore = transacao.RiskScore
@@ -146,17 +94,15 @@ public class TransactionsController : ControllerBase
 
         var suspeitas = await _transacaoService.ListarSuspeitasAsync();
 
-        var response = new TransacoesSuspeitasResponseDto
+        return Ok(new TransacoesSuspeitasResponseDto
         {
             Total = suspeitas.Count,
             Transacoes = suspeitas.Select(t => new TransacaoResumoDto
             {
                 Id = t.Id,
-                Status = t.Status.ToString().ToLowerInvariant(),
+                Status = t.Status.ParaTexto(),
                 Motivo = t.Motivo
             }).ToList()
-        };
-
-        return Ok(response);
+        });
     }
 }

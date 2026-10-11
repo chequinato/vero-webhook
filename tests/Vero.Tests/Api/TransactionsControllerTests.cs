@@ -3,70 +3,26 @@ using Moq;
 using Vero.Api.Controllers;
 using Vero.Api.DTOs.Requests;
 using Vero.Api.DTOs.Responses;
-using Vero.Api.Hubs;
+using Vero.Application.Interfaces;
+using Vero.Application.Models;
 using Vero.Domain.Entities;
 using Vero.Domain.Enums;
-using Vero.Domain.Interfaces;
-using Microsoft.AspNetCore.SignalR;
 
 namespace Vero.Tests.Api;
 
+/// <summary>
+/// O controller agora só depende de ITransacaoService, então o teste só
+/// precisa de um mock — compare com a versão antiga, que mockava repositórios,
+/// ML e SignalR para testar um controller. Isso é o SRP aparecendo nos testes.
+/// </summary>
 public class TransactionsControllerTests
 {
-    private readonly Mock<ITransacaoService> _serviceMock;
-    private readonly Mock<IContaRepository> _contaRepoMock;
-    private readonly Mock<ITransacaoRepository> _transacaoRepoMock;
-    private readonly Mock<IRiskScoringService> _riskScoringMock;
-    private readonly TransactionHubNotifier _hubNotifier;
+    private readonly Mock<ITransacaoService> _serviceMock = new();
     private readonly TransactionsController _controller;
-
-    private static readonly Conta ContaRemetente = new()
-    {
-        Id = 1, NumeroConta = "conta_123", Titular = "Maria", Score = 85
-    };
-
-    private static readonly Conta ContaDestinatario = new()
-    {
-        Id = 2, NumeroConta = "conta_456", Titular = "João", Score = 72
-    };
 
     public TransactionsControllerTests()
     {
-        _serviceMock = new Mock<ITransacaoService>();
-        _contaRepoMock = new Mock<IContaRepository>();
-        _transacaoRepoMock = new Mock<ITransacaoRepository>();
-        _riskScoringMock = new Mock<IRiskScoringService>();
-
-        // Mock do SignalR hub context
-        var hubContextMock = new Mock<IHubContext<TransactionHub>>();
-        var clientsMock = new Mock<IHubClients>();
-        var clientProxyMock = new Mock<IClientProxy>();
-        clientsMock.Setup(c => c.All).Returns(clientProxyMock.Object);
-        hubContextMock.Setup(h => h.Clients).Returns(clientsMock.Object);
-        _hubNotifier = new TransactionHubNotifier(hubContextMock.Object);
-
-        // Risk scoring padrão: retorna 0.15 (baixo risco)
-        _riskScoringMock.Setup(r => r.CalcularRiscoAsync(
-                It.IsAny<Transacao>(), It.IsAny<Conta?>(), It.IsAny<int>()))
-            .ReturnsAsync(0.15f);
-
-        // Velocity padrão: 0 transações recentes
-        _transacaoRepoMock.Setup(r => r.ContarPorRemetenteNoPeriodoAsync(
-                It.IsAny<int>(), It.IsAny<DateTime>(), It.IsAny<DateTime>()))
-            .ReturnsAsync(0);
-
-        _controller = new TransactionsController(
-            _serviceMock.Object,
-            _contaRepoMock.Object,
-            _transacaoRepoMock.Object,
-            _riskScoringMock.Object,
-            _hubNotifier);
-
-        // Setup padrão: contas existem
-        _contaRepoMock.Setup(r => r.ObterPorNumeroContaAsync("conta_123"))
-            .ReturnsAsync(ContaRemetente);
-        _contaRepoMock.Setup(r => r.ObterPorNumeroContaAsync("conta_456"))
-            .ReturnsAsync(ContaDestinatario);
+        _controller = new TransactionsController(_serviceMock.Object);
     }
 
     private static TransacaoRequestDto CriarRequest(string id = "txn_001", decimal valor = 1500m)
@@ -83,17 +39,24 @@ public class TransactionsControllerTests
         };
     }
 
+    private void ServiceRetorna(ResultadoRecebimento resultado)
+    {
+        _serviceMock.Setup(s => s.ProcessarTransacaoAsync(It.IsAny<NovaTransacao>()))
+            .ReturnsAsync(resultado);
+    }
+
     // ──────────────────────────────────────────────────────────
     // POST /transactions — aceita provisoriamente
     // ──────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task Post_TransacaoNormal_DeveRetornar202()
+    public async Task Post_TransacaoNormal_DeveRetornar202ComRiskScore()
     {
         var request = CriarRequest();
-        var transacaoResultado = new Transacao { Id = request.Id, Status = StatusTransacao.AceitaProvisoria };
-        _serviceMock.Setup(s => s.ProcessarTransacaoAsync(It.IsAny<Transacao>()))
-            .ReturnsAsync((transacaoResultado, false));
+        ServiceRetorna(ResultadoRecebimento.Aceita(new Transacao
+        {
+            Id = request.Id, Status = StatusTransacao.AceitaProvisoria, RiskScore = 0.15f
+        }));
 
         var result = await _controller.ReceberTransacao(request);
 
@@ -101,22 +64,22 @@ public class TransactionsControllerTests
         var dto = Assert.IsType<TransacaoResponseDto>(accepted.Value);
         Assert.Equal("aceita_provisoria", dto.Status);
         Assert.Equal(request.Id, dto.Id);
+        Assert.Equal(0.15f, dto.RiskScore);
     }
 
     [Fact]
-    public async Task Post_TransacaoNormal_DeveIncluirRiskScore()
+    public async Task Post_DeveConverterDtoParaNovaTransacao()
     {
         var request = CriarRequest();
-        var transacaoResultado = new Transacao { Id = request.Id, Status = StatusTransacao.AceitaProvisoria };
-        _serviceMock.Setup(s => s.ProcessarTransacaoAsync(It.IsAny<Transacao>()))
-            .ReturnsAsync((transacaoResultado, false));
+        ServiceRetorna(ResultadoRecebimento.Aceita(new Transacao { Id = request.Id }));
 
-        var result = await _controller.ReceberTransacao(request);
+        await _controller.ReceberTransacao(request);
 
-        var accepted = Assert.IsType<AcceptedResult>(result);
-        var dto = Assert.IsType<TransacaoResponseDto>(accepted.Value);
-        Assert.NotNull(dto.RiskScore);
-        Assert.Equal(0.15f, dto.RiskScore);
+        _serviceMock.Verify(s => s.ProcessarTransacaoAsync(It.Is<NovaTransacao>(n =>
+            n.Id == request.Id &&
+            n.NumeroContaRemetente == "conta_123" &&
+            n.NumeroContaDestinatario == "conta_456" &&
+            n.Valor == request.Valor)), Times.Once);
     }
 
     // ──────────────────────────────────────────────────────────
@@ -127,14 +90,10 @@ public class TransactionsControllerTests
     public async Task Post_TransacaoBloqueada_DeveRetornar403()
     {
         var request = CriarRequest(valor: 200_000m);
-        var transacaoBloqueada = new Transacao
+        ServiceRetorna(ResultadoRecebimento.Bloqueada(new Transacao
         {
-            Id = request.Id,
-            Status = StatusTransacao.Bloqueada,
-            Motivo = "valor_alto"
-        };
-        _serviceMock.Setup(s => s.ProcessarTransacaoAsync(It.IsAny<Transacao>()))
-            .ReturnsAsync((transacaoBloqueada, false));
+            Id = request.Id, Status = StatusTransacao.Bloqueada, Motivo = "valor_alto"
+        }));
 
         var result = await _controller.ReceberTransacao(request);
 
@@ -153,19 +112,17 @@ public class TransactionsControllerTests
     public async Task Post_TransacaoDuplicada_DeveRetornar409()
     {
         var request = CriarRequest();
-        var existente = new Transacao
+        ServiceRetorna(ResultadoRecebimento.Duplicada(new Transacao
         {
-            Id = request.Id,
-            Status = StatusTransacao.Aprovada
-        };
-        _serviceMock.Setup(s => s.ProcessarTransacaoAsync(It.IsAny<Transacao>()))
-            .ReturnsAsync((existente, true));
+            Id = request.Id, Status = StatusTransacao.Aprovada
+        }));
 
         var result = await _controller.ReceberTransacao(request);
 
         var conflict = Assert.IsType<ConflictObjectResult>(result);
         var dto = Assert.IsType<TransacaoResponseDto>(conflict.Value);
         Assert.Equal("transacao_duplicada", dto.Motivo);
+        Assert.Equal("aprovada", dto.Status);
     }
 
     // ──────────────────────────────────────────────────────────
@@ -175,36 +132,11 @@ public class TransactionsControllerTests
     [Fact]
     public async Task Post_ContaInexistente_DeveRetornar400()
     {
-        var request = CriarRequest();
-        request.Remetente = "conta_inexistente";
-        _contaRepoMock.Setup(r => r.ObterPorNumeroContaAsync("conta_inexistente"))
-            .ReturnsAsync((Conta?)null);
+        ServiceRetorna(ResultadoRecebimento.ContaNaoEncontrada());
 
-        var result = await _controller.ReceberTransacao(request);
+        var result = await _controller.ReceberTransacao(CriarRequest());
 
         Assert.IsType<BadRequestObjectResult>(result);
-    }
-
-    // ──────────────────────────────────────────────────────────
-    // POST /transactions — velocity é passada ao ML
-    // ──────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task Post_DevePassarVelocityParaRiskScoring()
-    {
-        var request = CriarRequest();
-        _transacaoRepoMock.Setup(r => r.ContarPorRemetenteNoPeriodoAsync(
-                ContaRemetente.Id, It.IsAny<DateTime>(), It.IsAny<DateTime>()))
-            .ReturnsAsync(5);
-
-        var transacaoResultado = new Transacao { Id = request.Id, Status = StatusTransacao.AceitaProvisoria };
-        _serviceMock.Setup(s => s.ProcessarTransacaoAsync(It.IsAny<Transacao>()))
-            .ReturnsAsync((transacaoResultado, false));
-
-        await _controller.ReceberTransacao(request);
-
-        _riskScoringMock.Verify(r => r.CalcularRiscoAsync(
-            It.IsAny<Transacao>(), ContaRemetente, 5), Times.Once);
     }
 
     // ──────────────────────────────────────────────────────────

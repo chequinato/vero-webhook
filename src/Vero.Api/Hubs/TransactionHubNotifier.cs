@@ -1,12 +1,18 @@
 using Microsoft.AspNetCore.SignalR;
+using Vero.Api.Mappers;
+using Vero.Domain.Entities;
+using Vero.Domain.Interfaces;
 
 namespace Vero.Api.Hubs;
 
 /// <summary>
-/// Serviço que envia notificações para o hub SignalR.
-/// Injetado nos controllers/services para notificar o dashboard em tempo real.
+/// Implementação de <see cref="INotificadorTransacao"/> que empurra eventos
+/// para o dashboard via SignalR (Adapter + Observer).
+///
+/// Mora na Api porque SignalR é detalhe de entrega web; a Application só
+/// conhece a interface.
 /// </summary>
-public class TransactionHubNotifier
+public class TransactionHubNotifier : INotificadorTransacao
 {
     private readonly IHubContext<TransactionHub> _hubContext;
 
@@ -15,30 +21,34 @@ public class TransactionHubNotifier
         _hubContext = hubContext;
     }
 
-    public async Task NotificarTransacaoRecebida(object transacaoDto)
-    {
-        await _hubContext.Clients.All.SendAsync("TransacaoRecebida", transacaoDto);
-    }
-
-    public async Task NotificarStatusAtualizado(string transacaoId, string novoStatus, string? motivo, float? riskScore)
-    {
-        await _hubContext.Clients.All.SendAsync("StatusAtualizado", new
+    public Task TransacaoRecebidaAsync(Transacao transacao) =>
+        _hubContext.Clients.All.SendAsync("TransacaoRecebida", new
         {
-            id = transacaoId,
-            status = novoStatus,
-            motivo,
-            riskScore,
+            id = transacao.Id,
+            status = transacao.Status.ParaTexto(),
+            valor = transacao.Valor,
+            tipo = transacao.Tipo,
+            moeda = transacao.Moeda,
+            motivo = transacao.Motivo,
+            riskScore = transacao.RiskScore,
+            timestamp = transacao.Timestamp
+        });
+
+    public Task StatusAtualizadoAsync(Transacao transacao) =>
+        _hubContext.Clients.All.SendAsync("StatusAtualizado", new
+        {
+            id = transacao.Id,
+            status = transacao.Status.ParaTexto(),
+            motivo = transacao.Motivo,
+            riskScore = transacao.RiskScore,
             timestamp = DateTime.UtcNow
         });
-    }
 
-    public async Task NotificarAlerta(string transacaoId, string motivo)
-    {
-        await _hubContext.Clients.All.SendAsync("AlertaDisparado", new
+    public Task NotificarAlerta(string transacaoId, string motivo) =>
+        _hubContext.Clients.All.SendAsync("AlertaDisparado", new
         {
             id = transacaoId,
             motivo,
             timestamp = DateTime.UtcNow
         });
-    }
 }
