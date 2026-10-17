@@ -3,6 +3,11 @@
 API que recebe transações financeiras via webhook e decide, em tempo real, se
 a transação é confiável, suspeita ou deve ser bloqueada imediatamente.
 
+> 📚 **Estudando o projeto?** O guia completo está em [`docs/`](docs/README.md),
+> dividido por assunto: C#, Clean Architecture, SOLID, design patterns, EF Core,
+> segurança, Machine Learning, React em tempo real, WebGL, AWS, testes e as
+> armadilhas encontradas de verdade. Cada arquivo começa com um resumo "pra gravar".
+
 ## Modelo híbrido de detecção
 
 - **Síncrono**: Casos óbvios de fraude são bloqueados na hora (resposta 403).
@@ -64,6 +69,7 @@ Vero/
 │   └── Vero.Worker/              # ⚙️ Consome a fila (BackgroundService ou Lambda)
 ├── simulator/Vero.Simulator/     # Dispara transações fake
 ├── dashboard/                    # Painel React
+├── docs/                         # 📚 Guia de estudo, um arquivo por assunto
 ├── tests/Vero.Tests/             # Testes unitários (xUnit + Moq)
 └── infra/terraform/              # Infraestrutura como código
 ```
@@ -195,7 +201,7 @@ banco só, e anunciado no hub como `StatusAtualizado`.
 dotnet test Vero.slnx
 ```
 
-**112 testes** cobrindo:
+**113 testes** cobrindo:
 
 | Pasta | O que testa |
 |-------|-------------|
@@ -205,7 +211,7 @@ dotnet test Vero.slnx
 | `Security/` (17) | AES-256-CBC, HMAC-SHA256, rate limiting |
 | `ML/` (14) | Gerador de dados, treino e scoring |
 | `Infrastructure/` (7) | `TransacaoRepository` com EF Core InMemory |
-| `CompositionRootTests` (3) | Os métodos `Add*` montam um container de DI completo para a Api e para o Worker |
+| `CompositionRootTests` (4) | Os métodos `Add*` montam o container de DI da Api e do Worker; sem configuração, a infraestrutura recusa subir |
 
 ## Infraestrutura AWS (Terraform)
 
@@ -272,293 +278,3 @@ TransactionsController           (Api)     valida o DTO e converte em NovaTransa
        └─ INotificadorTransacao  (Domain)  avisa o dashboard
   └─ devolve ResultadoRecebimento → controller traduz em 202 / 403 / 409 / 400
 ```
-
----
-
-# 📚 Guia de estudo: Arquitetura, SOLID e Design Patterns
-
-Este projeto foi organizado para servir de material de estudo. Cada conceito
-abaixo aponta para o arquivo onde ele aparece de verdade, e quase todo arquivo
-importante tem um comentário explicando **por que** ele existe e **como era
-antes**.
-
-**Como usar:** antes de abrir o arquivo de cada seção, leia a pergunta 🤔 e
-tente responder sozinho(a). Só depois confira no código. Errar o palpite e
-descobrir o porquê ensina mais do que ler a resposta pronta.
-
-## 1. Clean Architecture — cada coisa no seu lugar
-
-A ideia central: **regra de negócio não pode depender de detalhe técnico.**
-Banco, HTTP, SignalR, AWS, ML.NET são detalhes. "Valor acima de R$100.000 é
-bloqueado" é negócio.
-
-| Camada | Pergunta que ela responde | Exemplo no Vero |
-|--------|---------------------------|-----------------|
-| **Domain** | *O que* é o negócio? | `Transacao`, `ValorAltoRule`, `PoliticaDeRisco` |
-| **Application** | *Em que ordem* as coisas acontecem? | `TransacaoService` (resolve conta → score → regras → salva → fila) |
-| **Infrastructure** | *Com que ferramenta*? | `TransacaoRepository` (EF Core), `SqsFilaTransacao` (AWS) |
-| **Api / Worker** | *Por onde* o pedido chega? | `TransactionsController` (HTTP), `AsyncWorker` (fila) |
-
-> 🤔 O `TransacaoService` precisa salvar no banco, mas o projeto
-> `Vero.Application` **não referencia** `Vero.Infrastructure`. Como ele salva?
-> (Dica: abra `ITransacaoRepository` e veja em que projeto ele mora.)
-
-**Composition Root** — alguém precisa ligar a interface à implementação. Esse
-alguém é o `Program.cs` de cada executável. Ele é o único lugar que conhece
-todas as camadas, e ele só chama um método por camada:
-
-```csharp
-builder.Services.AddVeroInfrastructure(...);   // Vero.Infrastructure/DependencyInjection.cs
-builder.Services.AddVeroMl(...);               // Vero.ML/DependencyInjection.cs
-builder.Services.AddVeroApplication();         // Vero.Application/DependencyInjection.cs
-```
-
-Antes, `Api/Program.cs`, `Worker/Program.cs` e `LambdaHandler.cs` copiavam as
-mesmas 15 linhas de registro, e já tinham divergido (a Api injetava regras
-**síncronas** no `AnomalyDetectionService` sem ninguém perceber).
-
-## 2. SOLID
-
-### S — Single Responsibility (uma razão para mudar)
-
-Uma classe deve ter **um único motivo** para ser alterada.
-
-- **Antes:** `TransactionsController` resolvia contas, contava velocity,
-  chamava o ML, chamava o service, montava payload do SignalR e escolhia o
-  status HTTP. Seis motivos para mudar. O teste dele precisava de 5 mocks.
-- **Depois:** o controller só traduz HTTP ↔ Application
-  (`src/Vero.Api/Controllers/TransactionsController.cs`). O teste precisa de 1
-  mock. A orquestração foi para `TransacaoService`, e a decisão do corte de 70%
-  saiu do `DashboardController` para `src/Vero.Domain/Policies/PoliticaDeRisco.cs`.
-
-> 🤔 Compare `tests/Vero.Tests/Domain/PoliticaDeRiscoTests.cs` com
-> `tests/Vero.Tests/Api/TransactionsControllerTests.cs`. Qual é mais simples
-> de escrever? O que isso diz sobre onde a regra deveria morar?
-
-### O — Open/Closed (aberto para extensão, fechado para modificação)
-
-Dá para **adicionar comportamento sem mexer no código que já funciona**.
-
-- Para criar uma regra nova de fraude você cria uma classe que implementa
-  `IRegraSincrona` (ou `IRegraAssincrona`) e adiciona **uma linha** em
-  `src/Vero.Application/DependencyInjection.cs`. O `TransacaoService` não muda
-  nada — ele recebe `IEnumerable<IRegraSincrona>` e percorre o que vier.
-
-### L — Liskov Substitution (substituto não pode surpreender)
-
-Qualquer implementação de uma interface tem que poder entrar no lugar de outra
-**sem quebrar quem usa**.
-
-- `InMemoryFilaTransacao` e `SqsFilaTransacao` implementam `IFilaTransacao`.
-  As duas devolvem `null` quando a fila está vazia. Se a do SQS lançasse
-  exceção nesse caso, o `AsyncWorker` quebraria só em produção — isso seria
-  uma violação de Liskov.
-
-> 🤔 Abra `IFilaTransacao`. O comentário diz o que acontece quando a fila está
-> vazia. Por que documentar isso no **contrato** e não só na implementação?
-
-### I — Interface Segregation (interfaces pequenas e específicas)
-
-Ninguém deve ser obrigado a depender de métodos que não usa.
-
-- **Antes:** toda regra era `IRule`, e quem decidia se ela era síncrona ou
-  assíncrona era a ordem de registro no `Program.cs`. Registrar errado = regra
-  pesada rodando no caminho do webhook.
-- **Depois:** `IRegraSincrona` e `IRegraAssincrona` (`src/Vero.Domain/Rules/`).
-  O `TransacaoService` pede `IEnumerable<IRegraSincrona>` e o compilador garante
-  que só chegam regras síncronas.
-- Também: `ITransacaoService` e `IReavaliacaoService` são separados — o
-  `DashboardController` não precisa conhecer o recebimento de webhook.
-
-> 🤔 `ITransacaoRepository` tem 10 métodos, e o dashboard só usa 3 deles. Isso
-> é uma violação de ISP? (Veja o exercício 3 lá embaixo.)
-
-### D — Dependency Inversion (dependa de abstrações)
-
-Código de alto nível (regras, orquestração) não depende de código de baixo
-nível (SignalR, EF, AWS). **Os dois dependem de uma interface.**
-
-- `TransacaoService` precisa avisar o dashboard. Ele **não** conhece SignalR:
-  conhece `INotificadorTransacao` (Domain). Quem implementa é
-  `TransactionHubNotifier` (Api). No teste, vira um `Mock<INotificadorTransacao>`.
-- Mesma coisa para `IRiskScoringService` (ML.NET), `IAlertaService` (console
-  ou SNS), `IFilaTransacao` (memória ou SQS).
-
-> 🤔 Se amanhã o dashboard trocar SignalR por WebSocket puro, quais arquivos
-> mudam? E quais **não** mudam?
-
-**Contraponto importante:** nem tudo precisa de interface. `CalculadoraDeRisco`
-é uma classe concreta, sem interface, porque não existe motivo real para ter
-duas versões dela — e ela já é testável pelas dependências que recebe.
-Interface sem motivo é cerimônia.
-
-## 3. Design Patterns que aparecem no projeto
-
-| Pattern | Onde | Para quê |
-|---------|------|----------|
-| **Strategy** | `IRule` + `Rules/Sync/*`, `Rules/Async/*` | Cada regra é uma estratégia intercambiável; o service não sabe quais existem |
-| **Repository** | `ITransacaoRepository`, `IContaRepository` | Esconde o EF Core: a Application pensa em "coleção de transações", não em SQL |
-| **Adapter** | `SqsFilaTransacao`, `SnsAlertaService`, `TransactionHubNotifier`, `MlRiskScoringService` | Adapta uma biblioteca externa (AWS SDK, SignalR, ML.NET) à interface que o Domain pediu |
-| **Observer** | `INotificadorTransacao` | O service "publica" que algo aconteceu; quem estiver ouvindo (dashboard) reage |
-| **Result** | `ResultadoRecebimento`, `ResultadoReavaliacao` | Casos esperados ("conta não existe", "duplicada") viram valores, não exceções nem tuplas soltas |
-| **Mapper** | `src/Vero.Api/Mappers/TransacaoMapper.cs` | Um lugar só converte DTO ↔ modelo e enum ↔ texto |
-| **Chain of Responsibility** | Pipeline de middlewares no `Api/Program.cs` | Rate limit → HMAC → controller; cada elo pode barrar a requisição |
-| **Dependency Injection** | `DependencyInjection.cs` de cada camada | Ninguém dá `new` em dependência; recebe pelo construtor |
-| **Policy** | `PoliticaDeRisco` | Regra de decisão isolada, pura e testável |
-
-### Idiomas de C# que valem a pena reparar
-
-- **Extension methods** — `services.AddVeroApplication()`,
-  `regras.PrimeiraVioladaAsync(transacao)`, `status.ParaTexto()`. Métodos
-  estáticos que "parecem" métodos da classe.
-- **`record`** — `NovaTransacao`, `ResultadoRecebimento`. Imutável, com
-  igualdade por valor e `with` para criar cópias (veja o teste
-  `ProcessarTransacao_ContaInexistente_NaoDevePersistir`).
-- **`switch` expression** — `TransactionsController.ReceberTransacao` traduz
-  cada `DesfechoRecebimento` em um status HTTP.
-- **Interface vazia herdando outra** — `public interface IRegraSincrona : IRule;`
-
-## 4. Checklist de hábitos (antes de abrir um PR)
-
-1. **Em que camada isso mora?** Regra de negócio → Domain. Orquestração →
-   Application. Ferramenta → Infrastructure. HTTP → Api.
-2. **Meu controller tem `if` de negócio?** Se sim, mova para a Application ou
-   Domain.
-3. **Minha classe recebe mais de ~5 dependências?** Provavelmente faz coisa
-   demais (SRP).
-4. **Dei `new` em algo de infraestrutura dentro de um service?** Troque por uma
-   interface injetada (DIP).
-5. **Escrevi um número mágico?** (`5`, `0.70f`...) Dê nome a ele e deixe no
-   lugar que é "dono" da regra.
-6. **Copiei e colei um bloco?** Extraia (DRY) — o `AddMinutes(-5)` repetido
-   em dois controllers é o exemplo clássico deste projeto.
-7. **Registrei a peça nova no `DependencyInjection.cs` da camada certa?**
-   O `CompositionRootTests` vai te avisar se esqueceu.
-8. **Escrevi o teste?** Se for difícil testar, geralmente o design está
-   pedindo para ser separado.
-
-## 5. Exercícios práticos
-
-Faça na ordem. Para cada um, antes de codar, escreva num papel:
-**qual problema? qual entrada? qual saída? quais passos? dá para quebrar em
-partes menores?** As dicas estão escondidas — abra uma de cada vez, só se travar.
-
-### Exercício 1 — Nova regra síncrona (Strategy + Open/Closed)
-
-Bloquear transações cuja `Moeda` não seja `"BRL"`.
-
-<details><summary>Dica 1</summary>
-
-Olhe `ValorAltoRule`. Sua regra é muito parecida.
-</details>
-
-<details><summary>Dica 2</summary>
-
-Ela implementa `IRegraSincrona`, mora em `src/Vero.Domain/Rules/Sync/` e
-precisa de **uma** linha em `src/Vero.Application/DependencyInjection.cs`.
-</details>
-
-<details><summary>Dica 3</summary>
-
-Quantos arquivos **existentes** você precisou alterar além do
-`DependencyInjection.cs`? Se a resposta for zero, você acabou de ver o
-Open/Closed funcionando. Agora escreva o teste em `tests/Vero.Tests/Domain/`.
-</details>
-
-### Exercício 2 — Controlar o tempo nos testes (Dependency Inversion)
-
-`TransacaoService` usa `DateTime.UtcNow` direto. Como testar que a janela de
-velocity termina "agora" se "agora" muda a cada execução?
-
-<details><summary>Dica 1</summary>
-
-`DateTime.UtcNow` é uma dependência escondida — igual a dar `new` num
-repositório.
-</details>
-
-<details><summary>Dica 2</summary>
-
-O .NET já tem uma abstração para isso: `TimeProvider`. Injete no construtor e
-use `_timeProvider.GetUtcNow()`.
-</details>
-
-<details><summary>Dica 3</summary>
-
-Em produção registre `TimeProvider.System`. No teste, crie uma subclasse de
-`TimeProvider` que devolve uma data fixa (ou use o pacote
-`Microsoft.Extensions.TimeProvider.Testing` com `FakeTimeProvider`).
-</details>
-
-### Exercício 3 — Separar leitura de escrita (Interface Segregation)
-
-As rotas de leitura do `DashboardController` só consultam estatísticas, mas ele
-depende do `ITransacaoRepository` inteiro (que também grava).
-
-<details><summary>Dica 1</summary>
-
-Liste quais métodos do repositório cada classe usa de verdade. Os grupos que
-aparecerem são suas interfaces novas.
-</details>
-
-<details><summary>Dica 2</summary>
-
-Crie algo como `IDashboardQueries` com `ObterEstatisticasAsync`,
-`ListarPaginadoAsync` e `ObterVolumePorHoraAsync`. A mesma classe
-`TransacaoRepository` pode implementar as duas interfaces.
-</details>
-
-### Exercício 4 — Escolher a implementação pela configuração (Factory)
-
-Em produção o alerta deveria ir pelo SNS (`SnsAlertaService`); em dev, pelo
-console. Hoje está fixo no console.
-
-<details><summary>Dica 1</summary>
-
-O lugar para decidir isso é o `src/Vero.Infrastructure/DependencyInjection.cs`.
-Nenhum service deve saber qual implementação está rodando.
-</details>
-
-<details><summary>Dica 2</summary>
-
-`services.AddSingleton<IAlertaService>(sp => ...)` aceita uma função que
-**fabrica** a instância. Dentro dela você pode olhar uma variável de ambiente
-e devolver uma ou outra.
-</details>
-
-### Exercício 5 — Log em volta de qualquer alerta (Decorator)
-
-Quero registrar no log quanto tempo cada alerta demorou, seja console ou SNS,
-**sem alterar** nenhuma das duas classes.
-
-<details><summary>Dica 1</summary>
-
-Crie uma classe que implementa `IAlertaService` **e recebe** outro
-`IAlertaService` no construtor.
-</details>
-
-<details><summary>Dica 2</summary>
-
-No `EnviarAlertaAsync`, ela inicia um `Stopwatch`, chama o alerta "de dentro"
-e loga o tempo. Isso é o Decorator: mesma interface por fora, comportamento
-extra em volta.
-</details>
-
-### Pergunta bônus (sem código)
-
-A Api e o Worker registram, cada um, um `InMemoryFilaTransacao`. Se você rodar
-os dois localmente, a transação que a Api enfileira chega no Worker? Por quê?
-O que muda quando se usa o `SqsFilaTransacao`?
-
-## 6. Glossário rápido
-
-| Termo | Em uma frase |
-|-------|--------------|
-| **DTO** | Objeto que só carrega dados entre a API e o mundo de fora (JSON) |
-| **Entidade** | Objeto do negócio com identidade (`Transacao` tem `Id`) |
-| **Caso de uso** | Uma ação completa que o sistema oferece (receber transação, reavaliar) |
-| **Porta (interface)** | Contrato que o núcleo declara para falar com o mundo de fora |
-| **Adapter** | Implementação concreta de uma porta usando uma ferramenta específica |
-| **Composition Root** | O único lugar que monta o grafo de objetos (o `Program.cs`) |
-| **Mock** | Objeto falso usado no teste no lugar de uma dependência real |
-| **YAGNI** | "You Aren't Gonna Need It" — não crie abstração antes de precisar |
-| **DRY** | "Don't Repeat Yourself" — uma regra, um lugar |
