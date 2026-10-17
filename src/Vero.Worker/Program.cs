@@ -1,41 +1,16 @@
-using Microsoft.EntityFrameworkCore;
-using Vero.Application.Services;
-using Vero.Domain.Interfaces;
-using Vero.Domain.Rules;
-using Vero.Domain.Rules.Async;
-using Vero.Infrastructure.Data;
-using Vero.Infrastructure.Notifications;
-using Vero.Infrastructure.Queue;
-using Vero.Infrastructure.Repositories;
+using Vero.Application;
+using Vero.Infrastructure;
 using Vero.Worker;
 
+// Composition Root do Worker: mesmas camadas da Api, montadas pelos mesmos
+// métodos Add*. Só registra a análise assíncrona: não tem ML, SignalR nem controllers.
 var builder = Host.CreateApplicationBuilder(args);
 
-// Banco de dados
-var connectionString = builder.Configuration.GetConnectionString("VeroDb")
-    ?? Environment.GetEnvironmentVariable("VERO_CONNECTION_STRING")
-    ?? throw new InvalidOperationException("Connection string não configurada. Defina ConnectionStrings:VeroDb ou VERO_CONNECTION_STRING.");
+builder.Services.AddVeroInfrastructure(
+    builder.Configuration.GetConnectionString("VeroDb"),
+    builder.Configuration["Encryption:Key"]);
+builder.Services.AddVeroAnaliseAssincrona();
 
-builder.Services.AddDbContext<VeroDbContext>(options =>
-    options.UseNpgsql(connectionString));
-
-// Repositórios
-builder.Services.AddScoped<ITransacaoRepository, TransacaoRepository>();
-builder.Services.AddScoped<IContaRepository, ContaRepository>();
-
-// Fila e Alertas
-builder.Services.AddSingleton<IFilaTransacao, InMemoryFilaTransacao>();
-builder.Services.AddSingleton<IAlertaService, ConsoleAlertaService>();
-
-// Regras assíncronas
-builder.Services.AddScoped<IRule, VelocityRule>();
-builder.Services.AddScoped<IRule, HorarioEstranhoRule>();
-builder.Services.AddScoped<IRule, ValorRedondoRule>();
-
-// Services
-builder.Services.AddScoped<AnomalyDetectionService>();
-
-// Worker
 builder.Services.AddHostedService<AsyncWorker>();
 
 var host = builder.Build();

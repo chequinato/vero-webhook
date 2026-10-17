@@ -1,3 +1,5 @@
+using Vero.Application.Interfaces;
+using Vero.Application.Models;
 using Vero.Domain.Entities;
 using Vero.Domain.Enums;
 using Vero.Domain.Interfaces;
@@ -6,66 +8,94 @@ using Vero.Domain.Rules;
 namespace Vero.Application.Services;
 
 /// <summary>
-/// Orquestra o recebimento de transações: aplica regras síncronas, persiste,
-/// e enfileira para análise assíncrona quando necessário.
+/// Orquestra o recebimento de transações: resolve contas, calcula o risco,
+/// aplica regras síncronas, persiste, enfileira para análise assíncrona e
+/// notifica o dashboard.
+///
+/// Toda essa orquestração vivia no TransactionsController. Agora o controller
+/// só traduz HTTP ↔ Application, e esta classe pode ser testada sem subir
+/// ASP.NET (Single Responsibility + Dependency Inversion).
 /// </summary>
 public class TransacaoService : ITransacaoService
 {
     private readonly ITransacaoRepository _transacaoRepository;
     private readonly IContaRepository _contaRepository;
     private readonly IFilaTransacao _filaTransacao;
-    private readonly IEnumerable<IRule> _regrasSincronas;
+    private readonly CalculadoraDeRisco _calculadoraDeRisco;
+    private readonly INotificadorTransacao _notificador;
+    private readonly IEnumerable<IRegraSincrona> _regrasSincronas;
 
     public TransacaoService(
         ITransacaoRepository transacaoRepository,
         IContaRepository contaRepository,
         IFilaTransacao filaTransacao,
-        IEnumerable<IRule> regrasSincronas)
+        CalculadoraDeRisco calculadoraDeRisco,
+        INotificadorTransacao notificador,
+        IEnumerable<IRegraSincrona> regrasSincronas)
     {
         _transacaoRepository = transacaoRepository;
         _contaRepository = contaRepository;
         _filaTransacao = filaTransacao;
+        _calculadoraDeRisco = calculadoraDeRisco;
+        _notificador = notificador;
         _regrasSincronas = regrasSincronas;
     }
 
-    public async Task<(Transacao Transacao, bool IsDuplicata)> ProcessarTransacaoAsync(Transacao transacao)
+    public async Task<ResultadoRecebimento> ProcessarTransacaoAsync(NovaTransacao nova)
     {
+        var remetente = await _contaRepository.ObterPorNumeroContaAsync(nova.NumeroContaRemetente);
+        var destinatario = await _contaRepository.ObterPorNumeroContaAsync(nova.NumeroContaDestinatario);
+
+        if (remetente is null || destinatario is null)
+            return ResultadoRecebimento.ContaNaoEncontrada();
+
         // Proteção contra replay: se a transação já existe, não processa de novo
-        if (await _transacaoRepository.ExisteAsync(transacao.Id))
+        var existente = await _transacaoRepository.ObterPorIdAsync(nova.Id);
+        if (existente is not null)
+            return ResultadoRecebimento.Duplicada(existente);
+
+        var transacao = new Transacao
         {
-            var existente = await _transacaoRepository.ObterPorIdAsync(transacao.Id);
-            return (existente!, IsDuplicata: true);
+            Id = nova.Id,
+            RemetenteId = remetente.Id,
+            DestinatarioId = destinatario.Id,
+            Valor = nova.Valor,
+            Tipo = nova.Tipo,
+            Moeda = nova.Moeda,
+            Timestamp = nova.Timestamp
+        };
+
+        transacao.RiskScore = await _calculadoraDeRisco.CalcularAsync(transacao, remetente, DateTime.UtcNow);
+
+        var resultado = await AplicarRegrasSincronasAsync(transacao);
+
+        await _notificador.TransacaoRecebidaAsync(transacao);
+
+        return resultado;
+    }
+
+    private async Task<ResultadoRecebimento> AplicarRegrasSincronasAsync(Transacao transacao)
+    {
+        var regraViolada = await _regrasSincronas.PrimeiraVioladaAsync(transacao);
+
+        if (regraViolada is not null)
+        {
+            transacao.Status = StatusTransacao.Bloqueada;
+            transacao.Motivo = regraViolada.Nome;
+            await _transacaoRepository.AdicionarAsync(transacao);
+            return ResultadoRecebimento.Bloqueada(transacao);
         }
 
-        // Aplicar regras síncronas (bloqueio imediato)
-        foreach (var regra in _regrasSincronas)
-        {
-            if (await regra.Avaliar(transacao))
-            {
-                transacao.Status = StatusTransacao.Bloqueada;
-                transacao.Motivo = regra.Nome;
-                await _transacaoRepository.AdicionarAsync(transacao);
-                return (transacao, IsDuplicata: false);
-            }
-        }
-
-        // Passou nas regras síncronas: aceita provisoriamente
+        // Passou nas regras síncronas: aceita provisoriamente e manda para o Worker
         transacao.Status = StatusTransacao.AceitaProvisoria;
         await _transacaoRepository.AdicionarAsync(transacao);
-
-        // Envia para análise assíncrona
         await _filaTransacao.EnviarParaAnaliseAsync(transacao.Id);
-
-        return (transacao, IsDuplicata: false);
+        return ResultadoRecebimento.Aceita(transacao);
     }
 
-    public async Task<Transacao?> ConsultarStatusAsync(string transacaoId)
-    {
-        return await _transacaoRepository.ObterPorIdAsync(transacaoId);
-    }
+    public Task<Transacao?> ConsultarStatusAsync(string transacaoId) =>
+        _transacaoRepository.ObterPorIdAsync(transacaoId);
 
-    public async Task<IReadOnlyList<Transacao>> ListarSuspeitasAsync()
-    {
-        return await _transacaoRepository.ListarSuspeitasAsync();
-    }
+    public Task<IReadOnlyList<Transacao>> ListarSuspeitasAsync() =>
+        _transacaoRepository.ListarSuspeitasAsync();
 }

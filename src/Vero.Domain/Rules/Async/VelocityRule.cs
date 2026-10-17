@@ -6,7 +6,7 @@ namespace Vero.Domain.Rules.Async;
 /// <summary>
 /// Detecta velocity: múltiplas transações do mesmo remetente em pouco tempo (regra assíncrona).
 /// </summary>
-public class VelocityRule : IRule
+public class VelocityRule : IRegraAssincrona
 {
     /// <summary>
     /// Janela de tempo para contagem de transações (5 minutos).

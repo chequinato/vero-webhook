@@ -1,7 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
-using Vero.Api.Hubs;
+using Vero.Api.Mappers;
+using Vero.Application.Interfaces;
+using Vero.Application.Models;
 using Vero.Domain.Enums;
 using Vero.Domain.Interfaces;
+using Vero.Domain.Policies;
 
 namespace Vero.Api.Controllers;
 
@@ -9,39 +12,31 @@ namespace Vero.Api.Controllers;
 /// Endpoints do dashboard — estatísticas, listagem paginada, volume por hora
 /// e reavaliação de transações pelo modelo.
 ///
+/// As rotas de leitura falam direto com o repositório: são consultas sem
+/// regra de negócio, e criar um service só para repassar a chamada seria
+/// cerimônia sem ganho (YAGNI). Já a reavaliação **muda estado e tem regra**,
+/// então passa pela Application (<see cref="IReavaliacaoService"/>).
+///
 /// Nenhuma rota daqui passa pelo middleware HMAC: ele só cobre POST
 /// /transactions, o webhook de entrada. Isso é adequado enquanto o painel
-/// roda em rede interna, mas a reavaliação **muta estado** — antes de expor
+/// roda em rede interna, mas a reavaliação muta estado — antes de expor
 /// este host publicamente, a rota precisa de autenticação de operador.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
 public class DashboardController : ControllerBase
 {
-    /// <summary>
-    /// Corte de bloqueio do modelo. É o mesmo 70% que o painel imprime sobre
-    /// a distribuição de risco — os dois têm de sair daqui, senão a linha
-    /// desenhada na tela deixa de descrever a decisão real.
-    /// </summary>
-    private const float LimiarBloqueio = 0.70f;
-
     private readonly ITransacaoRepository _transacaoRepository;
-    private readonly IContaRepository _contaRepository;
-    private readonly IRiskScoringService _riskScoringService;
-    private readonly TransactionHubNotifier _hubNotifier;
+    private readonly IReavaliacaoService _reavaliacaoService;
     private readonly ILogger<DashboardController> _logger;
 
     public DashboardController(
         ITransacaoRepository transacaoRepository,
-        IContaRepository contaRepository,
-        IRiskScoringService riskScoringService,
-        TransactionHubNotifier hubNotifier,
+        IReavaliacaoService reavaliacaoService,
         ILogger<DashboardController> logger)
     {
         _transacaoRepository = transacaoRepository;
-        _contaRepository = contaRepository;
-        _riskScoringService = riskScoringService;
-        _hubNotifier = hubNotifier;
+        _reavaliacaoService = reavaliacaoService;
         _logger = logger;
     }
 
@@ -68,9 +63,9 @@ public class DashboardController : ControllerBase
         if (page < 1) page = 1;
         if (size < 1 || size > 100) size = 20;
 
-        Domain.Enums.StatusTransacao? filtro = null;
+        StatusTransacao? filtro = null;
         if (!string.IsNullOrEmpty(status) &&
-            Enum.TryParse<Domain.Enums.StatusTransacao>(status, ignoreCase: true, out var parsed))
+            Enum.TryParse<StatusTransacao>(status, ignoreCase: true, out var parsed))
         {
             filtro = parsed;
         }
@@ -82,7 +77,7 @@ public class DashboardController : ControllerBase
             items = items.Select(t => new
             {
                 t.Id,
-                status = t.Status.ToString().ToLowerInvariant(),
+                status = t.Status.ParaTexto(),
                 t.Valor,
                 t.Tipo,
                 t.Moeda,
@@ -116,7 +111,7 @@ public class DashboardController : ControllerBase
     [HttpGet("ml/metrics")]
     public IActionResult ObterMetricasMl()
     {
-        var modelPath = Path.Combine(AppContext.BaseDirectory, "Models", "fraud_model.zip");
+        var modelPath = Vero.ML.DependencyInjection.CaminhoModeloPadrao;
         var modelExists = System.IO.File.Exists(modelPath);
 
         return Ok(new
@@ -137,61 +132,39 @@ public class DashboardController : ControllerBase
     /// POST /api/dashboard/transactions/{id}/reavaliar
     ///
     /// Roda o modelo de novo sobre uma transação parada em revisão e resolve
-    /// o caso: acima do corte vira bloqueada, abaixo vira aprovada. É o botão
-    /// que o analista aperta na fila — não há decisão manual, quem decide é o
-    /// modelo; o operador só pede a decisão.
-    ///
-    /// Só aceita transações ainda pendentes (suspeita ou aceita provisória).
-    /// Reavaliar algo já decidido devolve 409, para o painel não conseguir
-    /// desfazer um bloqueio sem que isso passe por um fluxo próprio.
+    /// o caso: no corte ou acima vira bloqueada, abaixo vira aprovada.
+    /// Transação já decidida devolve 409; id inexistente devolve 404.
     /// </summary>
     [HttpPost("transactions/{id}/reavaliar")]
     public async Task<IActionResult> Reavaliar(string id)
     {
-        var transacao = await _transacaoRepository.ObterPorIdAsync(id);
-        if (transacao is null)
+        var resultado = await _reavaliacaoService.ReavaliarAsync(id);
+        var transacao = resultado.Transacao;
+
+        if (resultado.Desfecho == DesfechoReavaliacao.NaoEncontrada)
             return NotFound(new { erro = "Transação não encontrada." });
 
-        if (transacao.Status is not (StatusTransacao.Suspeita or StatusTransacao.AceitaProvisoria))
+        if (resultado.Desfecho == DesfechoReavaliacao.JaDecidida)
         {
             return Conflict(new
             {
                 erro = "Só transações em revisão podem ser reavaliadas.",
-                status = transacao.Status.ToString().ToLowerInvariant()
+                status = transacao!.Status.ParaTexto()
             });
         }
 
-        var remetente = await _contaRepository.ObterPorIdAsync(transacao.RemetenteId);
-
-        // Mesma janela de velocity usada na entrada, para o modelo ver a
-        // transação sob as mesmas features com que foi treinado.
-        var transacoesRecentes = await _transacaoRepository.ContarPorRemetenteNoPeriodoAsync(
-            transacao.RemetenteId,
-            transacao.Timestamp.AddMinutes(-5),
-            transacao.Timestamp);
-
-        var score = await _riskScoringService.CalcularRiscoAsync(transacao, remetente, transacoesRecentes);
-
-        var bloqueia = score >= LimiarBloqueio;
-        var novoStatus = bloqueia ? StatusTransacao.Bloqueada : StatusTransacao.Aprovada;
-        var motivo = bloqueia ? "modelo: risco acima do corte" : null;
-
-        await _transacaoRepository.AtualizarStatusEScoreAsync(id, novoStatus, motivo, score);
-
-        var statusTexto = novoStatus.ToString().ToLowerInvariant();
+        var statusTexto = transacao!.Status.ParaTexto();
 
         _logger.LogInformation(
-            "Reavaliação de {Id}: score {Score:F3} -> {Status}", id, score, statusTexto);
-
-        await _hubNotifier.NotificarStatusAtualizado(id, statusTexto, motivo, score);
+            "Reavaliação de {Id}: score {Score:F3} -> {Status}", id, transacao.RiskScore, statusTexto);
 
         return Ok(new
         {
             id,
             status = statusTexto,
-            motivo,
-            riskScore = score,
-            limiar = LimiarBloqueio
+            motivo = transacao.Motivo,
+            riskScore = transacao.RiskScore,
+            limiar = PoliticaDeRisco.LimiarBloqueio
         });
     }
 }

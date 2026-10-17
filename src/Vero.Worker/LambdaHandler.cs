@@ -1,15 +1,10 @@
 using Amazon.Lambda.Core;
 using Amazon.Lambda.SQSEvents;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Vero.Application;
 using Vero.Application.Services;
-using Vero.Domain.Interfaces;
-using Vero.Domain.Rules;
-using Vero.Domain.Rules.Async;
-using Vero.Infrastructure.Data;
-using Vero.Infrastructure.Notifications;
-using Vero.Infrastructure.Repositories;
+using Vero.Infrastructure;
 
 namespace Vero.Worker;
 
@@ -27,29 +22,12 @@ public class LambdaHandler
     {
         var services = new ServiceCollection();
 
-        // Banco de dados
-        var connectionString = Environment.GetEnvironmentVariable("VERO_CONNECTION_STRING")
-            ?? throw new InvalidOperationException("Connection string não configurada. Defina ConnectionStrings:VeroDb ou VERO_CONNECTION_STRING.");
+        // Mesmas camadas da Api e do Worker, registradas pelos mesmos métodos.
+        // Connection string e chave vêm das variáveis de ambiente da Lambda.
+        services.AddVeroInfrastructure();
+        services.AddVeroAnaliseAssincrona();
 
-        services.AddDbContext<VeroDbContext>(options =>
-            options.UseNpgsql(connectionString));
-
-        // Repositórios
-        services.AddScoped<ITransacaoRepository, TransacaoRepository>();
-        services.AddScoped<IContaRepository, ContaRepository>();
-
-        // Alertas (console em Lambda — o log vai pro CloudWatch)
-        services.AddSingleton<IAlertaService, ConsoleAlertaService>();
-
-        // Regras assíncronas
-        services.AddScoped<IRule, VelocityRule>();
-        services.AddScoped<IRule, HorarioEstranhoRule>();
-        services.AddScoped<IRule, ValorRedondoRule>();
-
-        // Services
-        services.AddScoped<AnomalyDetectionService>();
-
-        // Logging
+        // Logging (vai pro CloudWatch)
         services.AddLogging(builder => builder.AddConsole());
 
         _serviceProvider = services.BuildServiceProvider();
